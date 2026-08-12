@@ -1,5 +1,5 @@
 @echo off
-setlocal
+setlocal enabledelayedexpansion
 title Bwana - launcher
 
 rem ---------------------------------------------------------------------------
@@ -8,14 +8,20 @@ rem  Double-click this file to play.
 rem
 rem  Why a script rather than just double-clicking the jar:
 rem    - the client needs four arguments, and with none it prints usage and exits
-rem    - it must run on the portable JDK 8, not the 32-bit system JRE on PATH
+rem    - it must run on a JDK 8, not the 32-bit system JRE on PATH
 rem    - the server has to be listening first, or the client sits on
 rem      "Error loading - will retry in NN secs"
+rem
+rem  Nothing here is machine-specific. The JDK 8 and the server are both searched
+rem  for, and either can be named outright if the search does not find yours:
+rem
+rem    set BWANA_JDK8=C:\path\to\jdk8
+rem    set BWANA_SERVER=C:\path\to\Server
 rem ---------------------------------------------------------------------------
 
 set "ROOT=%~dp0"
 set "BUN=%USERPROFILE%\.bun\bin\bun.exe"
-set "ENGINE=%ROOT%Server\engine"
+set "PROBE=%TEMP%\bwana-jdk-probe.txt"
 
 rem The two layouts build-home.cmd also handles: a plain clone is itself the
 rem gradle project, while the work PC keeps the client in a Client-Java folder
@@ -24,13 +30,43 @@ set "CLIENT=%ROOT%"
 if exist "%ROOT%Client-Java\build.gradle" set "CLIENT=%ROOT%Client-Java\"
 set "JAR=%CLIENT%build\libs\rs2client.jar"
 
-rem BWANA_JDK8 wins, so a machine whose portable JDK 8 lives somewhere else
-rem needs no edit here. Same variable build-home.cmd reads.
-if defined BWANA_JDK8 (
-  set "JDK8=%BWANA_JDK8%"
-) else (
-  set "JDK8=%LOCALAPPDATA%\jdks\jdk8u502-b07"
+rem --- where is the server ------------------------------------------------------
+
+rem  The server is a separate project and is not vendored here. Which side of the
+rem  client it sits on depends on the same layout split as above: with the work
+rem  PC's Root\Client-Java it is a sibling at Root\Server, but in a plain clone
+rem  ROOT is the client repo itself, so a Server folder there would be nested
+rem  inside the checkout. Accept either, and let BWANA_SERVER override.
+
+set "ENGINE="
+if defined BWANA_SERVER (
+  if exist "%BWANA_SERVER%\engine\src\app.ts" set "ENGINE=%BWANA_SERVER%\engine"
+  if exist "%BWANA_SERVER%\src\app.ts"        set "ENGINE=%BWANA_SERVER%"
 )
+if not defined ENGINE if exist "%ROOT%Server\engine\src\app.ts"   set "ENGINE=%ROOT%Server\engine"
+if not defined ENGINE if exist "%ROOT%..\Server\engine\src\app.ts" set "ENGINE=%ROOT%..\Server\engine"
+
+rem --- which JDK 8 --------------------------------------------------------------
+
+rem  BWANA_JDK8 wins, then the portable JDK the work PC uses, then a search of the
+rem  usual install roots. Only a directory whose java reports version 8 counts,
+rem  which is what keeps this off both the 32-bit system JRE on PATH and a newer
+rem  JDK that happens to be installed alongside.
+
+set "JDK8="
+if defined BWANA_JDK8 if exist "%BWANA_JDK8%\bin\java.exe" set "JDK8=%BWANA_JDK8%"
+if not defined JDK8 if exist "%LOCALAPPDATA%\jdks\jdk8u502-b07\bin\java.exe" set "JDK8=%LOCALAPPDATA%\jdks\jdk8u502-b07"
+
+if not defined JDK8 (
+  for /d %%D in ("%LOCALAPPDATA%\jdks\*")             do call :consider8 "%%~fD"
+  for /d %%D in ("%USERPROFILE%\.jdks\*")             do call :consider8 "%%~fD"
+  for /d %%D in ("%ProgramFiles%\Java\*")             do call :consider8 "%%~fD"
+  for /d %%D in ("%ProgramFiles%\Eclipse Adoptium\*") do call :consider8 "%%~fD"
+  for /d %%D in ("%ProgramFiles%\Microsoft\*")        do call :consider8 "%%~fD"
+  for /d %%D in ("%ProgramFiles%\Amazon Corretto\*")  do call :consider8 "%%~fD"
+  for /d %%D in ("%ProgramFiles%\Zulu\*")             do call :consider8 "%%~fD"
+)
+if exist "%PROBE%" del "%PROBE%" >nul 2>&1
 
 rem The client derives both ports from one offset: http = 80 + offset,
 rem game = 43594 + offset. Port 80 is taken on this machine, hence 2000.
@@ -43,17 +79,23 @@ if not exist "%JAR%" (
   echo   Client jar not found:
   echo   %JAR%
   echo.
-  echo   Run build.cmd first.
+  echo   Run build-home.cmd first.
   echo.
   pause
   exit /b 1
 )
 
-if not exist "%JDK8%\bin\java.exe" (
+if not defined JDK8 (
   echo.
-  echo   JDK 8 not found at %JDK8%
+  echo   No JDK 8 found. Looked under:
   echo.
-  echo   Point at the one you have:  set BWANA_JDK8=C:\path\to\jdk8
+  echo     %LOCALAPPDATA%\jdks\
+  echo     %USERPROFILE%\.jdks\
+  echo     %ProgramFiles%\Java\ ^(and Adoptium, Microsoft, Corretto, Zulu^)
+  echo.
+  echo   Install one, or point at the one you have:
+  echo.
+  echo     set BWANA_JDK8=C:\path\to\jdk8
   echo.
   pause
   exit /b 1
@@ -67,10 +109,33 @@ if not errorlevel 1 (
   goto client
 )
 
+if not defined ENGINE (
+  echo.
+  echo   The Lost City server is not here. It is a separate project and is not
+  echo   vendored in this repo. Looked for engine\src\app.ts under:
+  echo.
+  echo     %ROOT%Server\
+  echo     %ROOT%..\Server\
+  echo.
+  echo   Clone https://github.com/LostCityRS/Server to either of those and run
+  echo   its setup, or point at an existing copy:
+  echo.
+  echo     set BWANA_SERVER=C:\path\to\Server
+  echo.
+  echo   Only play.cmd needs the server. run-client.cmd starts the client alone.
+  echo.
+  pause
+  exit /b 1
+)
+
 if not exist "%BUN%" (
   echo.
   echo   Bun not found at %BUN%
-  echo   The server cannot start without it.
+  echo   The server runs on it and cannot start without it. Install with:
+  echo.
+  echo     powershell -c "irm bun.sh/install.ps1 ^| iex"
+  echo.
+  echo   That installs to %USERPROFILE%\.bun\bin\, which is where this looks.
   echo.
   pause
   exit /b 1
@@ -109,8 +174,10 @@ rem --- client -----------------------------------------------------------------
 
 :client
 echo Starting client...
-rem java.exe, not javaw: if the client throws on startup the stack trace lands in
-rem client.log instead of disappearing silently.
+rem java.exe rather than javaw, so the process owns a console at all. Note the
+rem window is minimised and nothing is redirected, so a stack trace thrown during
+rem startup still goes with the window when the process dies: use run-client.cmd,
+rem which runs the same command in the foreground, to read it.
 rem
 rem JVM flags exist to stop the game loop freezing for a third of a second at a
 rem time. JDK 8 defaults to the parallel collector, whose full collections are
@@ -126,3 +193,30 @@ pushd "%CLIENT%"
 start "Bwana client" /MIN "%JDK8%\bin\java.exe" %JVM% -jar "%JAR%" %ARGS%
 popd
 exit /b 0
+
+rem --- subroutines -------------------------------------------------------------
+
+:consider8
+rem  %1 = a candidate JDK directory. Takes the first one reporting version 8.
+if defined JDK8 exit /b
+call :probe8 "%~1"
+if "%VER%"=="8" set "JDK8=%~1"
+exit /b
+
+:probe8
+rem  %1 = a candidate directory. Sets VER to the major version its java reports,
+rem  or leaves it empty. The version goes through a file rather than a pipe
+rem  because java prints -version to stderr, and the quoting needed to capture
+rem  that inline breaks on the spaces in "Program Files".
+set "VER="
+set "RAW="
+if not exist "%~1\bin\java.exe" exit /b
+"%~1\bin\java.exe" -version > "%PROBE%" 2>&1
+if errorlevel 1 exit /b
+for /f "tokens=3" %%V in ('findstr /i "version" "%PROBE%"') do set "RAW=%%~V"
+if not defined RAW exit /b
+rem  8 reports 1.8.0_502, everything since reports 17.0.9 or plain 21.
+for /f "tokens=1,2 delims=." %%a in ("%RAW%") do (
+  if "%%a"=="1" (set "VER=%%b") else (set "VER=%%a")
+)
+exit /b

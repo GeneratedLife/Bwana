@@ -45,13 +45,16 @@ new script. Woodcutting is simply the first plan anyone wrote.
 
 ## Running it
 
-Needs a portable JDK 8 and a Lost City server. The server is a separate project and
-is not vendored here; clone it alongside and start it first.
+Needs a JDK 8 and a Lost City server. The server is a separate project and is not
+vendored here; clone [`LostCityRS/Server`](https://github.com/LostCityRS/Server)
+alongside the checkout, or as `Server/` inside it, and `play.cmd` will find and
+start it.
 
 ```
 build.cmd       # gradle build, JDKs come from ~/.gradle/gradle.properties
 build-home.cmd  # gradle build, JDKs found on disk
 play.cmd        # starts the server if needed, then the client
+run-client.cmd  # client only, in the foreground, to read what it prints
 ```
 
 `build.cmd` relies on `~/.gradle/gradle.properties` pinning `org.gradle.java.home`
@@ -61,12 +64,15 @@ matching toolchains found for Java 8*. `build-home.cmd` needs no setup: it finds
 JDK 8 for the toolchain and a JDK to run Gradle, then passes both on the command
 line. It will not pick a JDK newer than 23 to run Gradle, because 8.11.1 predates
 Java 24 and fails on it with *Unsupported class file major version 68* while
-parsing `build.gradle`. Override the search when it guesses wrong — `BWANA_JDK8`
-is read by `play.cmd` too:
+parsing `build.gradle`. `play.cmd` and `run-client.cmd` search the same roots for
+the JDK 8 they launch on, so no script carries a machine-specific path;
+`run-client.cmd` then settles for `JAVA_HOME` at any version, since a trace out of
+a newer JDK still beats no trace. Name anything the search misses:
 
 ```
-set BWANA_JDK8=C:\path\to\jdk8
-set BWANA_JDK_DAEMON=C:\path\to\jdk
+set BWANA_JDK8=C:\path\to\jdk8       # the JDK 8, read by all three scripts
+set BWANA_JDK_DAEMON=C:\path\to\jdk  # what runs Gradle, build-home.cmd only
+set BWANA_SERVER=C:\path\to\Server   # the Lost City checkout, play.cmd only
 ```
 
 The client derives both ports from one offset: HTTP `80 + offset`, game
