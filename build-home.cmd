@@ -56,6 +56,54 @@ exit /b 1
 
 :haveproject
 
+rem --- the wrapper jar ---------------------------------------------------------
+
+rem  gradlew.bat is only a launcher. It sets
+rem    CLASSPATH=%APP_HOME%\gradle\wrapper\gradle-wrapper.jar
+rem  where APP_HOME is its own directory, then runs GradleWrapperMain out of that
+rem  jar. .gitignore's *.jar rule kept the file out of the repo, so a clone hits
+rem  ClassNotFoundException before Gradle ever starts. Check for it here and say
+rem  which path is actually wanted, since the jar has to sit in one exact place.
+
+set "WRAPJAR=%PROJECT%gradle\wrapper\gradle-wrapper.jar"
+
+if not exist "%WRAPJAR%" (
+  echo.
+  echo   The Gradle wrapper jar is missing. It goes exactly here:
+  echo.
+  echo     %WRAPJAR%
+  echo.
+  echo   Note gradlew.bat reads that path relative to itself, so the jar has to
+  echo   be under the folder holding gradlew.bat, in gradle\wrapper\.
+  echo.
+  echo   Similar files found under the checkout:
+  set "FOUND="
+  for /r "%PROJECT%" %%J in (*wrapper*.jar*) do (
+    echo     %%~fJ  ^(%%~zJ bytes^)
+    set "FOUND=1"
+  )
+  if not defined FOUND echo     none
+  echo.
+  pause
+  exit /b 1
+)
+
+rem  A truncated download or a saved error page will be far smaller than the real
+rem  jar, which is about 43 KB, and produces the same ClassNotFoundException.
+for %%J in ("%WRAPJAR%") do set "JARSIZE=%%~zJ"
+if %JARSIZE% lss 10000 (
+  echo.
+  echo   The wrapper jar looks wrong - %JARSIZE% bytes, expected about 43000:
+  echo.
+  echo     %WRAPJAR%
+  echo.
+  echo   That is usually a truncated download, or an HTML error page saved
+  echo   under the .jar name. Replace it and run this again.
+  echo.
+  pause
+  exit /b 1
+)
+
 rem --- which JDKs --------------------------------------------------------------
 
 set "JDK8="
