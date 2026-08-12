@@ -2,6 +2,11 @@ build/
 .gradle/
 *.class
 *.jar
+# The one jar that has to be committed: gradlew.bat is only a launcher and cannot
+# bootstrap without it, so a clone missing it fails with ClassNotFoundException:
+# org.gradle.wrapper.GradleWrapperMain. CI never caught this because the workflow
+# runs `gradle build` through setup-gradle, not `gradlew`.
+!gradle/wrapper/gradle-wrapper.jar
 *.log
 .idea/
 .vscode/
