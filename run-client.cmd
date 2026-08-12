@@ -38,7 +38,13 @@ if defined BWANA_JDK8 (
 ) else (
   set "JDK8=%LOCALAPPDATA%\jdks\jdk8u502-b07"
 )
-if not exist "%JDK8%\bin\java.exe" if exist "%JAVA_HOME%\bin\java.exe" set "JDK8=%JAVA_HOME%"
+rem  JAVA_HOME often carries a trailing backslash, which would print and pass
+rem  through as ...zulu-21\\bin\java.exe. Windows accepts that, but it reads like
+rem  a bug in the output, so trim it.
+if not exist "%JDK8%\bin\java.exe" if exist "%JAVA_HOME%\bin\java.exe" (
+  set "JDK8=%JAVA_HOME%"
+  if "%JAVA_HOME:~-1%"=="\" set "JDK8=%JAVA_HOME:~0,-1%"
+)
 
 if not exist "%JAR%" (
   echo.
