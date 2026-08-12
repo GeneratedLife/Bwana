@@ -85,8 +85,14 @@ if not defined JAVA (
 
 rem --- engine and content ------------------------------------------------------
 
+rem  An existing checkout is not necessarily the right one, and the wrong branch
+rem  fails in a way that names neither the branch nor the revision: 274 imports
+rem  node:sqlite and runs on Node, so under Bun it dies with "No such built-in
+rem  module: node:sqlite", while 225 uses bun:sqlite. Check rather than assume.
+
 if exist "%SERVER%\engine\.git" (
-  echo   engine  : already cloned, skipping
+  call :checkbranch "%SERVER%\engine" "engine " Engine-TS
+  if errorlevel 1 exit /b 1
 ) else (
   echo   engine  : cloning Engine-TS branch 225
   "%GIT%" clone --depth 1 -b 225 --single-branch https://github.com/LostCityRS/Engine-TS "%SERVER%\engine"
@@ -94,7 +100,8 @@ if exist "%SERVER%\engine\.git" (
 )
 
 if exist "%SERVER%\content\.git" (
-  echo   content : already cloned, skipping
+  call :checkbranch "%SERVER%\content" "content" Content
+  if errorlevel 1 exit /b 1
 ) else (
   echo   content : cloning Content branch 225
   "%GIT%" clone --depth 1 -b 225 --single-branch https://github.com/LostCityRS/Content "%SERVER%\content"
@@ -158,6 +165,46 @@ echo   loads; the client waits for it.
 echo.
 pause
 exit /b 0
+
+:checkbranch
+rem  %1 = repo dir, %2 = padded label for the report, %3 = repo name on GitHub.
+rem  Returns 1 if the checkout is not on 225.
+set "BR="
+rem  Plain `git`, not "%GIT%": a for /f command that opens with a quoted path
+rem  runs into cmd's own quote stripping. It was found on PATH above, so the
+rem  bare name resolves to the same executable.
+for /f "delims=" %%B in ('git -C "%~1" rev-parse --abbrev-ref HEAD 2^>nul') do set "BR=%%B"
+if /i "%BR%"=="225" (
+  echo   %~2 : on branch 225 already
+  exit /b 0
+)
+echo.
+echo   %~3 at %~1
+echo   is on branch "%BR%", but this client is rev 225 and the engine, the
+echo   content and the client all have to be the same revision.
+echo.
+echo   Branch 274 in particular runs on Node and imports node:sqlite, so under
+echo   Bun it dies with "No such built-in module: node:sqlite".
+echo.
+echo   Switch it over:
+echo.
+echo     cd /d "%~1"
+echo     git remote set-branches --add origin 225
+echo     git fetch origin 225
+echo     git checkout 225
+echo.
+if /i "%~3"=="Engine-TS" (
+  echo   Then clear out dependencies installed for the other branch, because
+  echo   they came from a different lockfile:
+  echo.
+  echo     rmdir /s /q "%~1\node_modules"
+  echo.
+)
+echo   Or delete %SERVER% entirely and run this again for a clean pair. That
+echo   discards any world and player data under it.
+echo.
+pause
+exit /b 1
 
 :clonefailed
 echo.
