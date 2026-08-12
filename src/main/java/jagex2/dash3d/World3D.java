@@ -833,6 +833,41 @@ public class World3D {
 		return var4 == null || var4.groundDecor == null ? 0 : var4.groundDecor.bitset;
 	}
 
+	/**
+	 * Every loc bitset on one tile, in a single lookup. // Bwana
+	 * <p>
+	 * The four accessors above each walk {@code levelTiles} independently, so asking
+	 * for all of them costs four triple-array dereferences and four null checks per
+	 * tile. A scan sweeping a few thousand tiles several times a second does that
+	 * tens of thousands of times, on the game thread — enough to stall the loop, stop
+	 * the packet reader and get the client dropped in a dense city.
+	 * <p>
+	 * Fills {@code arg4} with wall, decoration, loc and ground decoration, in that
+	 * order, and reports whether the tile had anything at all so the caller can skip
+	 * it outright.
+	 *
+	 * @param arg4 scratch of length 4, reused across the sweep
+	 */
+	public boolean getLocBitsets(int arg0, int arg1, int arg2, int[] arg4) {
+		Ground var6 = this.levelTiles[arg0][arg1][arg2];
+		if (var6 == null) {
+			return false;
+		}
+		arg4[0] = var6.wall == null ? 0 : var6.wall.bitset;
+		arg4[1] = var6.decor == null ? 0 : var6.decor.bitset;
+		arg4[2] = 0;
+		for (int var7 = 0; var7 < var6.locCount; var7++) {
+			Location var8 = var6.locs[var7];
+			if ((var8.bitset >> 29 & 0x3) == 2 && var8.minSceneTileX == arg1
+					&& var8.minSceneTileZ == arg2) {
+				arg4[2] = var8.bitset;
+				break;
+			}
+		}
+		arg4[3] = var6.groundDecor == null ? 0 : var6.groundDecor.bitset;
+		return (arg4[0] | arg4[1] | arg4[2] | arg4[3]) != 0;
+	}
+
 	@ObfuscatedName("r.g(IIII)I")
 	public int getInfo(int arg0, int arg1, int arg2, int arg3) {
 		Ground var5 = this.levelTiles[arg0][arg1][arg2];

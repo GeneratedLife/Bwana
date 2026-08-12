@@ -3,7 +3,6 @@ package jagex2.client;
 import deob.ObfuscatedName;
 import jagex2.graphics.Pix32;
 import jagex2.graphics.PixMap;
-import java.applet.Applet;
 import java.awt.Color;
 import java.awt.Component;
 import java.awt.Font;
@@ -20,7 +19,7 @@ import java.awt.event.WindowEvent;
 import java.awt.event.WindowListener;
 
 @ObfuscatedName("a")
-public class GameShell extends Applet implements Runnable, MouseListener, MouseMotionListener, KeyListener, FocusListener, WindowListener {
+public class GameShell implements Runnable, MouseListener, MouseMotionListener, KeyListener, FocusListener, WindowListener {
 
 	@ObfuscatedName("a.a")
 	public boolean field1 = false;
@@ -279,12 +278,9 @@ public class GameShell extends Applet implements Runnable, MouseListener, MouseM
 	}
 
 	public final void mousePressed(MouseEvent arg0) {
+		// events arrive on the canvas, so they are already canvas-relative
 		int var2 = arg0.getX();
 		int var3 = arg0.getY();
-		if (this.frame != null) {
-			var2 -= 4;
-			var3 -= 22;
-		}
 		this.idleCycles = 0;
 		this.mouseClickX = var2;
 		this.mouseClickY = var3;
@@ -324,12 +320,9 @@ public class GameShell extends Applet implements Runnable, MouseListener, MouseM
 	}
 
 	public final void mouseDragged(MouseEvent arg0) {
+		// events arrive on the canvas, so they are already canvas-relative
 		int var2 = arg0.getX();
 		int var3 = arg0.getY();
-		if (this.frame != null) {
-			var2 -= 4;
-			var3 -= 22;
-		}
 		this.idleCycles = 0;
 		this.mouseX = var2;
 		this.mouseY = var3;
@@ -339,12 +332,9 @@ public class GameShell extends Applet implements Runnable, MouseListener, MouseM
 	}
 
 	public final void mouseMoved(MouseEvent arg0) {
+		// events arrive on the canvas, so they are already canvas-relative
 		int var2 = arg0.getX();
 		int var3 = arg0.getY();
-		if (this.frame != null) {
-			var2 -= 4;
-			var3 -= 22;
-		}
 		this.idleCycles = 0;
 		this.mouseX = var2;
 		this.mouseY = var3;
@@ -545,7 +535,7 @@ public class GameShell extends Applet implements Runnable, MouseListener, MouseM
 		if (arg0 != 3) {
 			throw new NullPointerException();
 		}
-		return this.frame == null ? this : this.frame;
+		return this.frame == null ? null : this.frame.getCanvas();
 	}
 
 	@ObfuscatedName("a.a(Ljava/lang/Runnable;I)V")

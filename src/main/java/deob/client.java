@@ -52,11 +52,36 @@ import java.math.BigInteger;
 import java.net.InetAddress;
 import java.net.Socket;
 import java.net.URL;
+import java.util.ArrayList;
 import java.util.zip.CRC32;
 import sign.signlink;
+import bwana.Bwana;
+import bwana.GameEventBus;
+import bwana.action.ActionExecutor;
+import bwana.action.EntityAction;
+import bwana.GameState;
+import bwana.WorldQuery;
+import bwana.model.CameraInfo;
+import bwana.model.GroundItemInfo;
+import bwana.model.ItemInfo;
+import bwana.model.NpcInfo;
+import bwana.model.PathInfo;
+import bwana.model.PlayerInfo;
+import bwana.inspect.DebugOverlay;
+import bwana.inspect.EntityInfo;
+import bwana.inspect.EntityInspector;
+import bwana.inspect.Highlight;
+import bwana.inspect.NameFilter;
+import bwana.inspect.ProjectionDebug;
+import bwana.target.Candidate;
+import bwana.target.Selection;
+import bwana.target.TargetCriteria;
+import bwana.target.TargetHud;
+import bwana.vision.Frame;
+import bwana.vision.FrameSource;
 
 @ObfuscatedName("client")
-public class client extends GameShell {
+public class client extends GameShell implements GameState, WorldQuery, FrameSource, EntityInspector, ActionExecutor, bwana.nav.CollisionSource, bwana.widget.WidgetSource {
 
 	@ObfuscatedName("client.ab")
 	public int hintTileZ;
@@ -2255,6 +2280,11 @@ public class client extends GameShell {
 		this.drawTileHint((byte) -11);
 		this.updateTextures(var9, true);
 		this.draw3DEntityElements(9);
+		this.drawBwanaOverlay(); // Bwana
+		this.drawBwanaSelection(); // Bwana
+		this.drawBwanaHighlight(); // Bwana
+		this.drawBwanaTargetHud(); // Bwana
+		this.drawBwanaPlanHud(); // Bwana
 		this.areaViewport.draw(11, super.graphics, 8, 5193);
 		this.cameraX = var3;
 		this.cameraY = var4;
@@ -3555,7 +3585,7 @@ public class client extends GameShell {
 			this.field1124 = 260;
 		}
 		if (signlink.mainapp == null) {
-			return super.frame == null ? this : super.frame;
+			return super.frame == null ? null : super.frame.getCanvas();
 		} else {
 			return signlink.mainapp;
 		}
@@ -4075,7 +4105,7 @@ public class client extends GameShell {
 		int var6;
 		if (this.titleScreenState == 0) {
 			var4 = var3 / 2 - 20;
-			this.fontBold12.drawStringTaggableCenter(var2 / 2, 16776960, true, var4, "Welcome to RuneScape", 0);
+			this.fontBold12.drawStringTaggableCenter(var2 / 2, 16776960, true, var4, "Welcome to Bwana", 0);
 			int var7 = var4 + 30;
 			var5 = var2 / 2 - 80;
 			var6 = var3 / 2 + 20;
@@ -5771,7 +5801,8 @@ public class client extends GameShell {
 			this.out.p1(216);
 		}
 		if (signlink.mainapp == null) {
-			return super.frame == null ? super.getDocumentBase().getHost().toLowerCase() : "runescape.com";
+			// standalone always has a frame; the applet document-base path is gone
+			return "runescape.com";
 		} else {
 			return signlink.mainapp.getDocumentBase().getHost().toLowerCase();
 		}
@@ -7973,7 +8004,7 @@ public class client extends GameShell {
 			}
 		} catch (Exception var1) {
 		}
-		return super.getCodeBase();
+		return null;
 	}
 
 	@ObfuscatedName("client.B(I)V")
@@ -8272,6 +8303,7 @@ public class client extends GameShell {
 
 	@ObfuscatedName("client.a(ILjava/lang/String;BLjava/lang/String;)V")
 	public final void addMessage(int arg0, String arg1, byte arg2, String arg3) {
+		GameEventBus.fireChatMessage(arg0, arg3, arg1); // Bwana
 		if (arg0 == 0 && this.stickyChatInterfaceId != -1) {
 			this.modalMessage = arg1;
 			super.mouseClickButton = 0;
@@ -8800,11 +8832,12 @@ public class client extends GameShell {
 	}
 
 	public final String getParameter(String arg0) {
-		return signlink.mainapp == null ? super.getParameter(arg0) : signlink.mainapp.getParameter(arg0);
+		return signlink.mainapp == null ? null : signlink.mainapp.getParameter(arg0);
 	}
 
 	@ObfuscatedName("client.l(Z)V")
 	public final void tryReconnect(boolean arg0) {
+		bwana.ConnectionMonitor.noteReconnect(); // Bwana
 		if (this.idleTimeout > 0) {
 			this.logout(-780);
 			return;
@@ -9023,6 +9056,10 @@ public class client extends GameShell {
 		if (arg0 <= 0) {
 			return;
 		}
+		// Bwana: one poll here covers every path that sets ingame.
+		// ingame flips true before localPlayer exists and before its name arrives
+		// in the appearance block, so gate on both or onLogin reports a null name.
+		GameEventBus.tick(this.ingame && this.localPlayer != null && this.localPlayer.name != null);
 		if (this.ingame) {
 			this.updateGame(true);
 		} else {
@@ -9211,7 +9248,7 @@ public class client extends GameShell {
 	@ObfuscatedName("client.p(B)V")
 	public final void loadTitleBackground(byte arg0) {
 		byte[] var2 = this.archiveTitle.read("title.dat", null, (byte) 2);
-		Pix32 var3 = new Pix32(var2, this);
+		Pix32 var3 = new Pix32(var2, this.getBaseComponent((byte) 3));
 		this.imageTitle0.bind((byte) 62);
 		var3.blitOpaque(34676, 0, 0);
 		this.imageTitle1.bind((byte) 62);
@@ -10736,6 +10773,7 @@ public class client extends GameShell {
 				var26 = this.in.g1();
 				var4 = this.in.g4();
 				var5 = this.in.g1();
+				int skOldXp = this.skillExperience[var26]; // Bwana
 				this.skillExperience[var26] = var4;
 				this.skillLevel[var26] = var5;
 				this.skillBaseLevel[var26] = 1;
@@ -10744,6 +10782,7 @@ public class client extends GameShell {
 						this.skillBaseLevel[var26] = var6 + 2;
 					}
 				}
+				GameEventBus.fireExperienceGained(var26, skOldXp, var4); // Bwana
 				this.packetType = -1;
 				return true;
 			}
@@ -11050,6 +11089,2029 @@ public class client extends GameShell {
 		this.imageTitle8.draw(186, super.graphics, 574, 5193);
 	}
 
+	// ---- Bwana: GameState + WorldQuery implementation ------------------
+	// Read-only accessors over fields that already exist. Toolkit code binds to
+	// the bwana interfaces, never to this class, so this block is the entire
+	// coupling surface between the client and the toolkit.
+
+	/** Tab indices in the sidebar; the inventory is the fourth. */
+	private static final int INVENTORY_TAB = 3;
+
+	/** The worn-equipment tab sits immediately after the inventory. */
+	private static final int EQUIPMENT_TAB = 4;
+
+	private static final int[] NO_SLOTS = new int[0];
+	private static final ItemInfo[] NO_ITEMS = new ItemInfo[0];
+	private static final NpcInfo[] NO_NPCS = new NpcInfo[0];
+	private static final GroundItemInfo[] NO_GROUND_ITEMS = new GroundItemInfo[0];
+	private static final EntityInfo[] NO_ENTITIES = new EntityInfo[0];
+	private static final Candidate[] NO_CANDIDATES = new Candidate[0];
+
+	public boolean isLoggedIn() {
+		return this.ingame;
+	}
+
+	public int getSkillLevel(int arg0) {
+		return arg0 >= 0 && arg0 < this.skillLevel.length ? this.skillLevel[arg0] : 0;
+	}
+
+	public int getSkillBaseLevel(int arg0) {
+		return arg0 >= 0 && arg0 < this.skillBaseLevel.length ? this.skillBaseLevel[arg0] : 0;
+	}
+
+	public int getSkillExperience(int arg0) {
+		return arg0 >= 0 && arg0 < this.skillExperience.length ? this.skillExperience[arg0] : 0;
+	}
+
+	/**
+	 * The item container belonging to a given sidebar tab, or null.
+	 * <p>
+	 * Located by parent rather than by a hardcoded id: many components carry
+	 * inventory slots (bank, trade, equipment), so we take the one whose layer is
+	 * that tab's interface.
+	 */
+	private Component getContainerComponent(int arg0) {
+		if (!this.ingame || Component.instances == null) {
+			return null;
+		}
+		int var2 = this.tabInterfaceId[arg0];
+		if (var2 == -1) {
+			return null;
+		}
+		for (int var3 = 0; var3 < Component.instances.length; var3++) {
+			Component var4 = Component.instances[var3];
+			if (var4 != null && var4.layer == var2 && var4.invSlotObjId != null) {
+				return var4;
+			}
+		}
+		return null;
+	}
+
+	private Component getInventoryComponent() {
+		return this.getContainerComponent(INVENTORY_TAB);
+	}
+
+	/** Component id of a container tab, so callers can address it by number. */
+	private int getContainerComponentId(int arg0) {
+		Component var2 = this.getContainerComponent(arg0);
+		return var2 == null ? -1 : var2.id;
+	}
+
+	/** Occupied slots of a container, as toolkit-owned records. */
+	private ItemInfo[] readContainer(int arg0) {
+		Component var2 = this.getContainerComponent(arg0);
+		if (var2 == null) {
+			return NO_ITEMS;
+		}
+		int var3 = 0;
+		int var4;
+		for (var4 = 0; var4 < var2.invSlotObjId.length; var4++) {
+			if (var2.invSlotObjId[var4] > 0) {
+				var3++;
+			}
+		}
+		ItemInfo[] var5 = new ItemInfo[var3];
+		int var6 = 0;
+		for (var4 = 0; var4 < var2.invSlotObjId.length; var4++) {
+			if (var2.invSlotObjId[var4] > 0) {
+				// the protocol stores id+1 so that 0 can mean "empty"
+				var5[var6++] = new ItemInfo(var4, var2.invSlotObjId[var4] - 1, var2.invSlotObjCount[var4]);
+			}
+		}
+		return var5;
+	}
+
+	public ItemInfo[] getInventory() {
+		return this.readContainer(INVENTORY_TAB);
+	}
+
+	public ItemInfo[] getEquipment() {
+		return this.readContainer(EQUIPMENT_TAB);
+	}
+
+	public int[] getInventoryIds() {
+		Component var1 = this.getInventoryComponent();
+		if (var1 == null) {
+			return NO_SLOTS;
+		}
+		int[] var2 = new int[var1.invSlotObjId.length];
+		for (int var3 = 0; var3 < var2.length; var3++) {
+			// the protocol stores id+1 so that 0 can mean "empty"
+			var2[var3] = var1.invSlotObjId[var3] - 1;
+		}
+		return var2;
+	}
+
+	public int[] getInventoryCounts() {
+		Component var1 = this.getInventoryComponent();
+		if (var1 == null) {
+			return NO_SLOTS;
+		}
+		int[] var2 = new int[var1.invSlotObjCount.length];
+		System.arraycopy(var1.invSlotObjCount, 0, var2, 0, var2.length);
+		return var2;
+	}
+
+	public int getWorldX() {
+		return this.localPlayer == null ? -1 : (this.localPlayer.x >> 7) + this.sceneBaseTileX;
+	}
+
+	public int getWorldY() {
+		return this.localPlayer == null ? -1 : (this.localPlayer.z >> 7) + this.sceneBaseTileZ;
+	}
+
+	public int getPlane() {
+		return this.currentLevel;
+	}
+
+	public String getLocalPlayerName() {
+		return this.localPlayer == null ? null : this.localPlayer.name;
+	}
+
+	public PlayerInfo getPlayer() {
+		PlayerEntity var1 = this.localPlayer;
+		if (var1 == null) {
+			return null;
+		}
+		return new PlayerInfo(var1.name,
+			(var1.x >> 7) + this.sceneBaseTileX,
+			(var1.z >> 7) + this.sceneBaseTileZ,
+			this.currentLevel, var1.yaw,
+			var1.health, var1.totalHealth,
+			var1.primarySeqId, var1.combatLevel);
+	}
+
+	public CameraInfo getCamera() {
+		// cameraX/Z are scene-local; convert so they line up with entity positions
+		return new CameraInfo(this.cameraX, this.cameraY, this.cameraZ,
+			(this.cameraX >> 7) + this.sceneBaseTileX,
+			(this.cameraZ >> 7) + this.sceneBaseTileZ,
+			this.cameraPitch, this.cameraYaw);
+	}
+
+	public PathInfo getPath() {
+		PlayerEntity var1 = this.localPlayer;
+		if (var1 == null) {
+			return new PathInfo(NO_SLOTS, NO_SLOTS, new boolean[0], -1, -1);
+		}
+		// pathLength is the count of queued steps beyond the current tile
+		int var2 = var1.pathLength;
+		if (var2 < 0) {
+			var2 = 0;
+		}
+		if (var2 > var1.pathTileX.length) {
+			var2 = var1.pathTileX.length;
+		}
+		int[] var3 = new int[var2];
+		int[] var4 = new int[var2];
+		boolean[] var5 = new boolean[var2];
+		for (int var6 = 0; var6 < var2; var6++) {
+			var3[var6] = var1.pathTileX[var6] + this.sceneBaseTileX;
+			var4[var6] = var1.pathTileZ[var6] + this.sceneBaseTileZ;
+			var5[var6] = var1.pathRunning[var6];
+		}
+		// the client zeroes the flag on arrival, so 0 means "no destination"
+		int var7 = this.flagSceneTileX == 0 ? -1 : this.flagSceneTileX + this.sceneBaseTileX;
+		int var8 = this.flagSceneTileX == 0 ? -1 : this.flagSceneTileZ + this.sceneBaseTileZ;
+		return new PathInfo(var3, var4, var5, var7, var8);
+	}
+
+	public NpcInfo[] getNpcs() {
+		if (!this.ingame) {
+			return NO_NPCS;
+		}
+		NpcInfo[] var1 = new NpcInfo[this.npcCount];
+		int var2 = 0;
+		for (int var3 = 0; var3 < this.npcCount; var3++) {
+			// npcs[] is a sparse 8192 array; npcIds[] holds the live indices
+			NpcEntity var4 = this.npcs[this.npcIds[var3]];
+			if (var4 == null) {
+				continue;
+			}
+			// type is already resolved on the entity, so the name costs nothing
+			NpcType var5 = var4.type;
+			// NpcType.index is declared long; ids fit in an int comfortably
+			var1[var2++] = new NpcInfo(var5 == null ? -1 : (int) var5.index,
+				var5 == null ? null : var5.name,
+				(var4.x >> 7) + this.sceneBaseTileX,
+				(var4.z >> 7) + this.sceneBaseTileZ,
+				var4.size, var4.yaw,
+				var4.health, var4.totalHealth,
+				var4.primarySeqId, var4.targetId);
+		}
+		if (var2 == var1.length) {
+			return var1;
+		}
+		NpcInfo[] var6 = new NpcInfo[var2];
+		System.arraycopy(var1, 0, var6, 0, var2);
+		return var6;
+	}
+
+	// ---- WorldQuery: scans, not getters ----
+
+	public GroundItemInfo[] getGroundItems() {
+		if (!this.ingame || this.levelObjStacks == null) {
+			return NO_GROUND_ITEMS;
+		}
+		ArrayList var1 = new ArrayList();
+		LinkList[][] var2 = this.levelObjStacks[this.currentLevel];
+		for (int var3 = 0; var3 < var2.length; var3++) {
+			for (int var4 = 0; var4 < var2[var3].length; var4++) {
+				LinkList var5 = var2[var3][var4];
+				if (var5 == null) {
+					continue;
+				}
+				// LinkList keeps its iteration cursor on the list itself, which is
+				// why this has to run on the game thread and nowhere else
+				for (ObjStackEntity var6 = (ObjStackEntity) var5.head(); var6 != null; var6 = (ObjStackEntity) var5.next(1)) {
+					var1.add(new GroundItemInfo(var3 + this.sceneBaseTileX, var4 + this.sceneBaseTileZ,
+						this.currentLevel, var6.index, var6.count));
+				}
+			}
+		}
+		GroundItemInfo[] var7 = new GroundItemInfo[var1.size()];
+		for (int var8 = 0; var8 < var7.length; var8++) {
+			var7[var8] = (GroundItemInfo) var1.get(var8);
+		}
+		return var7;
+	}
+
+	public String getItemName(int arg0) {
+		if (arg0 < 0) {
+			return null;
+		}
+		ObjType var2 = ObjType.get(arg0);
+		return var2 == null ? null : var2.name;
+	}
+
+	/**
+	 * Draws the toolkit's selection box into the viewport raster.
+	 * <p>
+	 * Called while Pix2D is still bound to areaViewport and before it is blitted to
+	 * screen, so the box is composited into the game's own image rather than
+	 * floating in a separate window that would drift when the game moves.
+	 * Coordinates are viewport-relative, which is the same space the projection
+	 * produces, so no conversion happens here and nothing can be lost in one.
+	 */
+	/**
+	 * The plan overlay: what it is doing, what it just did, what it is aiming at.
+	 * <p>
+	 * Drawn on the right so it does not fight the target readout on the left, and
+	 * blended rather than filled so the scene stays visible through it — the point
+	 * is to watch the game and the plan at the same time.
+	 */
+	private void drawBwanaPlanHud() {
+		if (!bwana.plan.PlanHud.isEnabled() || this.fontPlain12 == null) {
+			return;
+		}
+		String[] var1 = bwana.plan.PlanHud.getLines();
+		int[] var2 = bwana.plan.PlanHud.getColours();
+		if (var1.length == 0) {
+			return;
+		}
+		int var3 = 0;
+		for (int var4 = 0; var4 < var1.length; var4++) {
+			int var5 = this.fontPlain12.stringWidth(false, var1[var4]);
+			if (var5 > var3) {
+				var3 = var5;
+			}
+		}
+		int var6 = var1.length * 12 + 8;
+		int var7 = 506 - var3 - 12;
+		if (var7 < 4) {
+			var7 = 4;
+		}
+		// Barely there on purpose: an overlay you have to read past all session is
+		// worse than one you have to look at.
+		blendRect(var7, 6, var3 + 12, var6, 0x180C00, 120);
+		Pix2D.drawRect(3, var7, 0xFF8A1E, var6, 6, var3 + 12);
+		for (int var8 = 0; var8 < var1.length && var8 < var2.length; var8++) {
+			this.fontPlain12.drawString(var7 + 6, 20 + var8 * 12, false, var2[var8], var1[var8]);
+		}
+	}
+
+	/**
+	 * Alpha-blend a rectangle into the current Pix2D raster.
+	 * <p>
+	 * Pix2D only writes opaque pixels, so translucency means compositing by hand:
+	 * read what is there, mix, write back. Clipped to the raster's own bounds so it
+	 * cannot run off the edge of the buffer.
+	 *
+	 * @param alpha 0 transparent, 255 opaque
+	 */
+	private static void blendRect(int arg0, int arg1, int arg2, int arg3, int arg4, int arg5) {
+		int var6 = arg0 < Pix2D.boundLeft ? Pix2D.boundLeft : arg0;
+		int var7 = arg1 < Pix2D.boundTop ? Pix2D.boundTop : arg1;
+		int var8 = arg0 + arg2 > Pix2D.boundRight ? Pix2D.boundRight : arg0 + arg2;
+		int var9 = arg1 + arg3 > Pix2D.boundBottom ? Pix2D.boundBottom : arg1 + arg3;
+		if (var8 <= var6 || var9 <= var7) {
+			return;
+		}
+		int var10 = (arg4 >> 16 & 0xFF) * arg5;
+		int var11 = (arg4 >> 8 & 0xFF) * arg5;
+		int var12 = (arg4 & 0xFF) * arg5;
+		int var13 = 255 - arg5;
+		for (int var14 = var7; var14 < var9; var14++) {
+			int var15 = var14 * Pix2D.width2d;
+			for (int var16 = var6; var16 < var8; var16++) {
+				int var17 = Pix2D.data[var15 + var16];
+				int var18 = (var10 + (var17 >> 16 & 0xFF) * var13) / 255;
+				int var19 = (var11 + (var17 >> 8 & 0xFF) * var13) / 255;
+				int var20 = (var12 + (var17 & 0xFF) * var13) / 255;
+				Pix2D.data[var15 + var16] = (var18 << 16) + (var19 << 8) + var20;
+			}
+		}
+	}
+
+	/**
+	 * Draw the target readout in the corner of the viewport.
+	 * <p>
+	 * Just a loop over pre-composed strings: the wording and the decisions behind
+	 * it belong to the toolkit, and this only puts them on screen.
+	 */
+	private void drawBwanaTargetHud() {
+		if (!TargetHud.isEnabled() || this.fontPlain12 == null) {
+			return;
+		}
+		String[] var1 = TargetHud.getLines();
+		int[] var2 = TargetHud.getColours();
+		if (var1.length == 0) {
+			return;
+		}
+		int var3 = 0;
+		for (int var4 = 0; var4 < var1.length; var4++) {
+			int var5 = this.fontPlain12.stringWidth(false, var1[var4]);
+			if (var5 > var3) {
+				var3 = var5;
+			}
+		}
+		int var6 = var1.length * 12 + 8;
+		// Translucent backing: dark enough to keep text legible over grass, stone
+		// or sky, but the scene stays readable through it. Pix2D has no alpha
+		// blend, so this composites directly into its raster.
+		blendRect(6, 6, var3 + 12, var6, 0x000000, 140);
+		Pix2D.drawRect(3, 6, 0x555555, var6, 6, var3 + 12);
+		for (int var7 = 0; var7 < var1.length && var7 < var2.length; var7++) {
+			this.fontPlain12.drawString(12, 20 + var7 * 12, false, var2[var7], var1[var7]);
+		}
+	}
+
+	/**
+	 * The selected target's crosshair, resolved through the same path as every
+	 * other marker so it tracks a walking NPC identically.
+	 */
+	private void drawBwanaSelection() {
+		if (!Selection.hasTarget()) {
+			return;
+		}
+		DebugOverlay.Target var1 = Selection.getMarker();
+		if (var1 == null || !this.resolveOverlayTarget(var1)) {
+			return;
+		}
+		int var2 = this.projectX;
+		int var3 = this.projectY;
+		// bigger and boxed, so the selection stands out from the survey markers
+		Pix2D.drawRect(3, var2 - 14, 0, 29, var3 - 14, 29);
+		Pix2D.drawRect(3, var2 - 13, 0xFFCC00, 27, var3 - 13, 27);
+		Pix2D.hline(0, 0, var3 + 1, 21, var2 - 10);
+		Pix2D.vline(0, 0, var3 - 10, 21, var2 + 1);
+		Pix2D.hline(0xFFCC00, 0, var3, 21, var2 - 10);
+		Pix2D.vline(0xFFCC00, 0, var3 - 10, 21, var2);
+		if (this.fontPlain12 != null && var1.name != null) {
+			this.fontPlain12.drawString(var2 + 17, var3 - 13, false, 0, var1.name);
+			this.fontPlain12.drawString(var2 + 16, var3 - 14, false, 0xFFCC00, var1.name);
+		}
+	}
+
+	private void drawBwanaHighlight() {
+		if (!Highlight.isActive()) {
+			return;
+		}
+		int var1 = Highlight.getX();
+		int var2 = Highlight.getY();
+		int var3 = Highlight.getWidth();
+		int var4 = Highlight.getHeight();
+		if (var3 < 4) {
+			var3 = 4;
+		}
+		if (var4 < 4) {
+			var4 = 4;
+		}
+		int var5 = Highlight.getRgb();
+		Pix2D.drawRect(3, var1, var5, var4, var2, var3);
+		Pix2D.drawRect(3, var1 - 1, 0, var4 + 2, var2 - 1, var3 + 2);
+
+		// second box in its own colour, so two candidate anchors can be compared
+		// against the rendered object at a glance
+		if (Highlight.hasSecondBox()) {
+			int var10 = Highlight.getWidth2();
+			int var11 = Highlight.getHeight2();
+			if (var10 < 4) {
+				var10 = 4;
+			}
+			if (var11 < 4) {
+				var11 = 4;
+			}
+			Pix2D.drawRect(3, Highlight.getX2(), Highlight.getRgb2(), var11,
+				Highlight.getY2(), var10);
+		}
+
+		// crosshair on the exact point the mouse is sent to
+		int var6 = Highlight.hasCrosshair() ? Highlight.getCrossX() : var1 + var3 / 2;
+		int var7 = Highlight.hasCrosshair() ? Highlight.getCrossY() : var2 + var4 / 2;
+		// vline takes (colour, flag, y, height, x) -- y and x are not in the same
+		// order as hline's, which is easy to get backwards and draws the stroke at
+		// the transposed point
+		Pix2D.hline(0, 0, var7 + 1, 13, var6 - 6);
+		Pix2D.vline(0, 0, var7 - 6, 13, var6 + 1);
+		Pix2D.hline(0xFFFF00, 0, var7, 13, var6 - 6);
+		Pix2D.vline(0xFFFF00, 0, var7 - 6, 13, var6);
+
+		String var8 = Highlight.getLabel();
+		if (var8 != null && this.fontPlain12 != null) {
+			this.fontPlain12.drawString(var1, var2 - 4, false, 0, var8);
+			this.fontPlain12.drawString(var1 - 1, var2 - 5, false, var5, var8);
+		}
+	}
+
+	// ---- EntityInspector: what did the game draw here ----
+
+	/** How far from a projected entity the cursor may be and still count, in px. */
+	private static final int INSPECT_RADIUS = 28;
+
+	/**
+	 * What the cursor is really over, taken from the renderer's own picking.
+	 * <p>
+	 * Every frame the client sets {@code Model.checkHover} and clears
+	 * {@code Model.pickedCount} before drawing the scene, and each model whose
+	 * <b>actual triangles</b> contain the cursor pushes its bitset onto
+	 * {@code Model.pickedBitsets}. That is the list the right-click menu and the
+	 * hover text are built from, so reading it gives exactly what the game thinks
+	 * you are pointing at — no estimated column heights, no guessing how far a
+	 * willow's fronds hang past its tile.
+	 * <p>
+	 * The bitset packs tile x in bits 0-6, tile z in 7-13, the id in 14-28 and the
+	 * kind in 29-30, where 0 is a player, 1 an NPC, 2 a loc and 3 a ground item.
+	 */
+	public EntityInfo[] inspectAtCursor() {
+		if (!this.ingame) {
+			return NO_ENTITIES;
+		}
+		ArrayList var1 = new ArrayList();
+		int var2 = 0;
+		for (int var3 = 0; var3 < Model.pickedCount; var3++) {
+			int var4 = Model.pickedBitsets[var3];
+			if (var4 == var2) {
+				// the same model reports once per triangle under the cursor
+				continue;
+			}
+			var2 = var4;
+			int var5 = var4 & 0x7F;
+			int var6 = var4 >> 7 & 0x7F;
+			int var7 = var4 >> 14 & 0x7FFF;
+			int var8 = var4 >> 29 & 0x3;
+
+			if (var8 == 2) {
+				this.addPickedLoc(var1, var7, var5, var6);
+			} else if (var8 == 1) {
+				NpcEntity var9 = var7 >= 0 && var7 < this.npcs.length ? this.npcs[var7] : null;
+				if (var9 != null) {
+					NpcType var10 = var9.type;
+					this.addPathing(var1, var9, EntityInfo.KIND_NPC,
+						var10 == null ? -1 : (int) var10.index,
+						var10 == null ? "(loading)" : var10.name,
+						var10 == null ? null : "size " + var10.size
+							+ (var10.vislevel > 0 ? ", combat " + var10.vislevel : ""),
+						bwana.inspect.EntityHandle.forNpc(var10 == null ? -1 : (int) var10.index,
+							var7, var10 == null ? null : var10.name));
+				}
+			} else if (var8 == 0) {
+				PlayerEntity var11 = var7 >= 0 && var7 < this.players.length ? this.players[var7] : null;
+				if (var11 != null) {
+					this.addPathing(var1, var11, EntityInfo.KIND_PLAYER, -1,
+						var11.name == null ? "(player)" : var11.name,
+						"combat " + var11.combatLevel,
+						bwana.inspect.EntityHandle.forPlayer(var11.name, var7));
+				}
+			} else {
+				this.addGroundItemsAt(var1, var5, var6);
+			}
+		}
+
+		// the ground tile is not part of model picking, so it is still found by
+		// projecting nearby tiles; it ranks last anyway
+		int[] var12 = this.pickTile(super.mouseX - VIEWPORT_X, super.mouseY - VIEWPORT_Y);
+		if (var12 != null) {
+			int[] var13 = this.projectTileBox(var12[0], var12[1], 1, 1, 0);
+			var1.add(new EntityInfo(EntityInfo.KIND_TILE, -1, "Tile", null,
+				var12[0] + this.sceneBaseTileX, var12[1] + this.sceneBaseTileZ, this.currentLevel,
+				-1, -1, var12[0], var12[1],
+				var13 == null ? -1 : var13[0], var13 == null ? -1 : var13[1],
+				var13 == null ? 0 : var13[2], var13 == null ? 0 : var13[3],
+				var13 == null ? 0 : var13[4], var13 == null ? 0 : var13[5],
+				true, -1, -1, null));
+		}
+
+		EntityInfo[] var14 = new EntityInfo[var1.size()];
+		for (int var15 = 0; var15 < var14.length; var15++) {
+			var14[var15] = (EntityInfo) var1.get(var15);
+		}
+		this.rankByRelevance(var14);
+		return var14;
+	}
+
+	/**
+	 * Scan the scene for named objects, nearest the player first.
+	 * <p>
+	 * Distance is measured from the player in tiles, not from the camera, because
+	 * "nearest" here means nearest to walk to. Only the current plane is searched,
+	 * which falls out of the scene storing each level separately.
+	 */
+	public EntityInfo[] findObjects(String arg0, int arg1) {
+		TargetCriteria var3x = new TargetCriteria();
+		var3x.names = NameFilter.parse(arg0);
+		// the old behaviour: scenery and creatures, on screen or not
+		var3x.requireOnScreen = false;
+		var3x.maxDistance = PICK_RADIUS;
+		return this.findTargets(var3x, arg1);
+	}
+
+	public EntityInfo[] findTargets(TargetCriteria arg0, int arg1) {
+		Candidate[] var3x = this.findCandidates(arg0, arg1 + 16);
+		int var4x = 0;
+		for (int var5x = 0; var5x < var3x.length && var4x < arg1; var5x++) {
+			if (var3x[var5x].isEligible()) {
+				var4x++;
+			}
+		}
+		EntityInfo[] var6x = new EntityInfo[var4x];
+		int var7x = 0;
+		for (int var8x = 0; var8x < var3x.length && var7x < var4x; var8x++) {
+			if (var3x[var8x].isEligible()) {
+				var6x[var7x++] = var3x[var8x].entity;
+			}
+		}
+		return var6x;
+	}
+
+	public Candidate[] findCandidates(TargetCriteria arg0, int arg1) {
+		if (!this.ingame || this.scene == null || this.localPlayer == null) {
+			return NO_CANDIDATES;
+		}
+		NameFilter var3 = arg0.names;
+		int var4 = this.localPlayer.x >> 7;
+		int var5 = this.localPlayer.z >> 7;
+
+		long var60 = System.nanoTime();
+		ArrayList var6 = new ArrayList();
+		ArrayList var7 = new ArrayList();
+		// Scan past the criteria's range on purpose -- an entity just outside it is
+		// worth listing as OUT OF RANGE rather than being invisible to the report --
+		// but only just past it. Scanning the full pick radius regardless meant a
+		// 53x53 sweep for a 15-tile search: four times the tiles, and in a city that
+		// is thousands of config lookups several times a second on the game thread.
+		int var38 = arg0.maxDistance + 4;
+		if (var38 > PICK_RADIUS) {
+			var38 = PICK_RADIUS;
+		} else if (var38 < 1) {
+			var38 = 1;
+		}
+		int[] var12 = new int[4];
+		boolean var39 = arg0.acceptsKind(EntityInfo.KIND_LOC);
+		for (int var8 = -var38; var8 <= var38 && var39; var8++) {
+			int var9 = var5 + var8;
+			if (var9 < 0 || var9 > 103) {
+				continue;
+			}
+			for (int var10 = -var38; var10 <= var38; var10++) {
+				int var11 = var4 + var10;
+				if (var11 < 0 || var11 > 103) {
+					continue;
+				}
+				// One lookup per tile into a reused buffer. Four separate accessors
+				// plus a fresh int[4] per tile meant thousands of array allocations
+				// and four times the dereferencing on every sweep.
+				if (!this.scene.getLocBitsets(this.currentLevel, var11, var9, var12)) {
+					continue;
+				}
+				for (int var13 = 0; var13 < var12.length; var13++) {
+					if (var12[var13] == 0) {
+						continue;
+					}
+					int var14 = var12[var13] >> 14 & 0x7FFF;
+					this.memoiseLoc(var14);
+					String var41 = this.locNameMemo[var14];
+					if (var41 == null || !var3.matches(var41)) {
+						continue;
+					}
+					int var16 = var11 - var4;
+					int var17 = var9 - var5;
+					var6.add(new int[] { var16 * var16 + var17 * var17, var14, var11, var9,
+						this.locSizeMemo[var14] >> 8 & 0xFF, this.locSizeMemo[var14] & 0xFF });
+					var7.add(var41);
+				}
+			}
+		}
+
+		// build the scenery records, then add creatures, then rank the lot together
+		ArrayList var28 = new ArrayList();
+		ArrayList var29 = new ArrayList();
+		for (int var30 = 0; var30 < var6.size(); var30++) {
+			int[] var31 = (int[]) var6.get(var30);
+			String var32 = (String) var7.get(var30);
+			int[] var33 = this.projectTileBox(var31[2], var31[3], var31[4], var31[5], 0);
+			EntityInfo var50 = new EntityInfo(EntityInfo.KIND_LOC, var31[1], var32,
+				"loc, " + var31[4] + "x" + var31[5],
+				var31[2] + this.sceneBaseTileX, var31[3] + this.sceneBaseTileZ, this.currentLevel,
+				-1, -1, var31[2], var31[3],
+				var33 == null ? -1 : var33[0], var33 == null ? -1 : var33[1],
+				var33 == null ? 0 : var33[2], var33 == null ? 0 : var33[3],
+				var33 == null ? 0 : var33[4], var33 == null ? 0 : var33[5],
+				var33 != null, -1, -1, null);
+			int var51 = Math.max(Math.abs(var31[2] - var4), Math.abs(var31[3] - var5));
+			var28.add(new Candidate(var50, var51, arg0.rejectionReason(var50, var51)));
+			var29.add(new Integer(var31[0]));
+		}
+
+		// creatures come from the client's live lists, filtered by the same criteria
+		if (arg0.acceptsKind(EntityInfo.KIND_NPC)) {
+			for (int var34 = 0; var34 < this.npcCount; var34++) {
+				int var40 = this.npcIds[var34];
+				NpcEntity var35 = this.npcs[var40];
+				if (var35 == null || var35.type == null || var35.type.name == null) {
+					continue;
+				}
+				int var36 = (var35.x >> 7) - var4;
+				int var37 = (var35.z >> 7) - var5;
+				EntityInfo var41 = this.describeNpc(var35, var40);
+				int var42 = Math.max(Math.abs(var36), Math.abs(var37));
+				if (!var3.matches(var41.name)) {
+					continue;
+				}
+				var28.add(new Candidate(var41, var42, arg0.rejectionReason(var41, var42)));
+				var29.add(new Integer(var36 * var36 + var37 * var37));
+			}
+		}
+		if (arg0.acceptsKind(EntityInfo.KIND_PLAYER)) {
+			for (int var43 = 0; var43 < this.playerCount; var43++) {
+				int var44 = this.playerIds[var43];
+				PlayerEntity var45 = this.players[var44];
+				if (var45 == null || var45.name == null) {
+					continue;
+				}
+				int var46 = (var45.x >> 7) - var4;
+				int var47 = (var45.z >> 7) - var5;
+				EntityInfo var48 = this.describePlayer(var45, var44);
+				int var49 = Math.max(Math.abs(var46), Math.abs(var47));
+				if (!var3.matches(var48.name)) {
+					continue;
+				}
+				var28.add(new Candidate(var48, var49, arg0.rejectionReason(var48, var49)));
+				var29.add(new Integer(var46 * var46 + var47 * var47));
+			}
+		}
+
+		// Nearest-first, eligible before rejected, without sorting the whole list.
+		//
+		// Two partial selection passes, each picking the nearest not-yet-taken entry
+		// until the cut is filled: eligible ones first so that rejected entries can
+		// never displace something selectable -- a plain nearest-arg1 cut turned the
+		// limit into a filter, and a cluster of stumps standing closer than the
+		// nearest real tree hid it completely. Rejected entries are still returned,
+		// because the readout needs them to explain itself.
+		//
+		// Cost is arg1 * n, not n squared. Sorting everything first was correct but
+		// far too slow to run several times a second in a city.
+		int var18 = arg1 < var28.size() ? arg1 : var28.size();
+		Candidate[] var19 = new Candidate[var18];
+		boolean[] var20 = new boolean[var28.size()];
+		int var21 = 0;
+		for (int var22 = 0; var22 < 2 && var21 < var18; var22++) {
+			boolean var23 = var22 == 0;
+			while (var21 < var18) {
+				int var24 = -1;
+				for (int var25 = 0; var25 < var28.size(); var25++) {
+					if (var20[var25] || ((Candidate) var28.get(var25)).isEligible() != var23) {
+						continue;
+					}
+					if (var24 < 0 || ((Integer) var29.get(var25)).intValue()
+							< ((Integer) var29.get(var24)).intValue()) {
+						var24 = var25;
+					}
+				}
+				if (var24 < 0) {
+					break;
+				}
+				var20[var24] = true;
+				var19[var21++] = (Candidate) var28.get(var24);
+			}
+		}
+		// nearest eligible wins, which is the same one findTargets returns
+		if (var21 > 0 && var19[0].isEligible()) {
+			var19[0].selected = true;
+		}
+		if (var21 < var18) {
+			Candidate[] var26 = new Candidate[var21];
+			System.arraycopy(var19, 0, var26, 0, var21);
+			var19 = var26;
+		}
+
+		long var27 = (System.nanoTime() - var60) / 1000000L;
+		if (var27 >= SLOW_SCAN_MS) {
+			// A scan this slow stalls the game loop, which stops the packet reader,
+			// which is how a client ends up disconnected for standing in a city.
+			System.out.println("bwana/scan slow: " + var27 + "ms  radius " + var38
+				+ "  " + var28.size() + " matched  limit " + arg1);
+		}
+		return var19;
+	}
+
+	/**
+	 * Everything about how the nearest matching loc maps to the screen.
+	 * <p>
+	 * The anchor is taken from the client's own loc placement: the model is put at
+	 * the centre of the footprint, {@code tile * 128 + size * 64}, at terrain
+	 * height, and extends upward. Rotation swaps width and length, which is easy to
+	 * miss and puts a non-square object's centre in the wrong place.
+	 */
+	public ProjectionDebug debugNearest(String arg0) {
+		EntityInfo[] var2 = this.findObjects(arg0, 1);
+		if (var2.length == 0 || this.localPlayer == null) {
+			return null;
+		}
+		EntityInfo var3 = var2[0];
+		ProjectionDebug var4 = new ProjectionDebug();
+		var4.name = var3.name;
+		var4.id = var3.id;
+		var4.worldX = var3.worldX;
+		var4.worldY = var3.worldY;
+		var4.plane = var3.plane;
+		var4.tileX = var3.tileX;
+		var4.tileZ = var3.tileZ;
+
+		var4.playerWorldX = (this.localPlayer.x >> 7) + this.sceneBaseTileX;
+		var4.playerWorldY = (this.localPlayer.z >> 7) + this.sceneBaseTileZ;
+		var4.playerTileX = this.localPlayer.x >> 7;
+		var4.playerTileZ = this.localPlayer.z >> 7;
+		var4.distance = Math.max(Math.abs(var4.tileX - var4.playerTileX),
+			Math.abs(var4.tileZ - var4.playerTileZ));
+		var4.cameraX = this.cameraX;
+		var4.cameraY = this.cameraY;
+		var4.cameraZ = this.cameraZ;
+		var4.cameraPitch = this.cameraPitch;
+		var4.cameraYaw = this.cameraYaw;
+
+		if (var3.kind != EntityInfo.KIND_LOC) {
+			// a creature carries its own extent, so no model lookup is needed
+			this.fillCreatureDebug(var4, var3);
+			return var4;
+		}
+
+		LocType var5 = LocType.get(var3.id);
+		int var6 = var5 == null ? 1 : var5.width;
+		int var7 = var5 == null ? 1 : var5.length;
+
+		// shape lives in the low 5 bits of the scene's info byte, rotation above it
+		int var8 = this.scene.getLocBitset(this.currentLevel, var4.tileX, var4.tileZ);
+		int var9 = var8 == 0 ? -1 : this.scene.getInfo(this.currentLevel, var4.tileX, var4.tileZ, var8);
+		if (var9 >= 0) {
+			var4.shape = var9 & 0x1F;
+			var4.rotation = var9 >> 6 & 0x3;
+			// rotating a loc by a quarter turn swaps its footprint
+			if (var4.rotation == 1 || var4.rotation == 3) {
+				int var10 = var6;
+				var6 = var7;
+				var7 = var10;
+			}
+		}
+		var4.width = var6;
+		var4.length = var7;
+
+		var4.anchorX = var4.tileX * 128 + var6 * 64;
+		var4.anchorZ = var4.tileZ * 128 + var7 * 64;
+		var4.anchorGroundY = this.getHeightmapY(this.currentLevel, var4.anchorX, (byte) 5, var4.anchorZ);
+
+		if (var5 != null && var4.shape >= 0) {
+			int var11 = this.levelHeightmap[this.currentLevel][var4.tileX][var4.tileZ];
+			int var12 = this.levelHeightmap[this.currentLevel][var4.tileX + 1][var4.tileZ];
+			int var13 = this.levelHeightmap[this.currentLevel][var4.tileX + 1][var4.tileZ + 1];
+			int var14 = this.levelHeightmap[this.currentLevel][var4.tileX][var4.tileZ + 1];
+			Model var15 = var5.getModel(var4.shape, var4.rotation, var11, var12, var13, var14, -1);
+			if (var15 != null) {
+				var4.modelAvailable = true;
+				var4.modelMaxY = var15.maxY;
+				var4.modelMinY = var15.minY;
+				var4.modelRadius = var15.radius;
+				var4.modelMinX = var15.minX;
+				var4.modelMaxX = var15.maxX;
+			}
+		}
+
+		// the same object projected from four different anchors
+		this.projectFromGround(var4.anchorZ, var4.anchorX, -1, 0);
+		var4.groundScreenX = this.projectX;
+		var4.groundScreenY = this.projectY;
+		this.projectFromGround(var4.tileZ * 128, var4.tileX * 128, -1, 0);
+		var4.originScreenX = this.projectX;
+		var4.originScreenY = this.projectY;
+		if (var4.modelAvailable) {
+			this.projectFromGround(var4.anchorZ, var4.anchorX, -1, var4.modelMaxY / 2);
+			var4.centreScreenX = this.projectX;
+			var4.centreScreenY = this.projectY;
+			this.projectFromGround(var4.anchorZ, var4.anchorX, -1, var4.modelMaxY);
+			var4.topScreenX = this.projectX;
+			var4.topScreenY = this.projectY;
+		}
+
+		int[] var16 = this.projectTileBox(var4.tileX, var4.tileZ, var6, var7, 0);
+		if (var16 != null) {
+			var4.footprintBoxX = var16[2];
+			var4.footprintBoxY = var16[3];
+			var4.footprintBoxW = var16[4];
+			var4.footprintBoxH = var16[5];
+		}
+
+		if (var4.modelAvailable) {
+			this.projectModelBounds(var4);
+		}
+
+		// what the interaction test currently aims at
+		var4.targetScreenX = var4.footprintBoxX + var4.footprintBoxW / 2;
+		var4.targetScreenY = var4.footprintBoxY + var4.footprintBoxH / 2;
+		var4.targetDescription = "centre of the ground footprint box";
+		return var4;
+	}
+
+	/**
+	 * Projection breakdown for a creature.
+	 * <p>
+	 * Simpler than a loc: an entity is already positioned at its own centre, and
+	 * carries its height and size directly, so there is no footprint arithmetic and
+	 * no model to resolve. The anchor question that made scenery tricky does not
+	 * arise — {@code x}/{@code z} <i>are</i> the centre.
+	 */
+	private void fillCreatureDebug(ProjectionDebug arg0, EntityInfo arg1) {
+		PathingEntity var3 = null;
+		if (arg1.kind == EntityInfo.KIND_NPC) {
+			for (int var4 = 0; var4 < this.npcCount; var4++) {
+				NpcEntity var5 = this.npcs[this.npcIds[var4]];
+				if (var5 != null && var5.type != null && (int) var5.type.index == arg1.id
+						&& (var5.x >> 7) == arg1.tileX && (var5.z >> 7) == arg1.tileZ) {
+					var3 = var5;
+					break;
+				}
+			}
+		} else {
+			var3 = this.localPlayer;
+		}
+		if (var3 == null) {
+			return;
+		}
+
+		arg0.width = var3.size;
+		arg0.length = var3.size;
+		arg0.anchorX = var3.x;
+		arg0.anchorZ = var3.z;
+		arg0.anchorGroundY = this.getHeightmapY(this.currentLevel, var3.x, (byte) 5, var3.z);
+		arg0.modelAvailable = true;
+		arg0.modelMaxY = var3.height;
+		arg0.modelRadius = var3.size * 64;
+
+		this.projectFromGround(var3.z, var3.x, -1, 0);
+		arg0.groundScreenX = this.projectX;
+		arg0.groundScreenY = this.projectY;
+		this.projectFromGround(var3.z, var3.x, -1, var3.height / 2);
+		arg0.centreScreenX = this.projectX;
+		arg0.centreScreenY = this.projectY;
+		this.projectFromGround(var3.z, var3.x, -1, var3.height);
+		arg0.topScreenX = this.projectX;
+		arg0.topScreenY = this.projectY;
+		this.projectFromGround(arg0.tileZ * 128, arg0.tileX * 128, -1, 0);
+		arg0.originScreenX = this.projectX;
+		arg0.originScreenY = this.projectY;
+
+		arg0.footprintBoxX = arg1.boxX;
+		arg0.footprintBoxY = arg1.boxY;
+		arg0.footprintBoxW = arg1.boxWidth;
+		arg0.footprintBoxH = arg1.boxHeight;
+		this.projectModelBounds(arg0);
+
+		arg0.targetScreenX = arg0.centreScreenX;
+		arg0.targetScreenY = arg0.centreScreenY;
+		arg0.targetDescription = "entity centre (its own half-height)";
+	}
+
+	/** How far out to gather crosshair targets, in tiles. */
+	private static final int OVERLAY_RADIUS = 16;
+
+	/**
+	 * Collect the objects the live overlay should mark.
+	 * <p>
+	 * Resolves each loc's model once here to get its height, because that is the
+	 * expensive part and it does not change as the camera moves. What is stored is
+	 * the anchor and half-height — world values — so the render hook can project
+	 * them fresh every frame.
+	 */
+	public void refreshDebugOverlay(String arg0, int arg1) {
+		if (!this.ingame || this.scene == null || this.localPlayer == null) {
+			DebugOverlay.setTargets(null, this.sceneBaseTileX, this.sceneBaseTileZ);
+			return;
+		}
+		NameFilter var3 = NameFilter.parse(arg0);
+		int var4 = this.localPlayer.x >> 7;
+		int var5 = this.localPlayer.z >> 7;
+		ArrayList var6 = new ArrayList();
+
+		for (int var7 = -OVERLAY_RADIUS; var7 <= OVERLAY_RADIUS && var6.size() < arg1; var7++) {
+			int var8 = var5 + var7;
+			if (var8 < 1 || var8 > 102) {
+				continue;
+			}
+			for (int var9 = -OVERLAY_RADIUS; var9 <= OVERLAY_RADIUS && var6.size() < arg1; var9++) {
+				int var10 = var4 + var9;
+				if (var10 < 1 || var10 > 102) {
+					continue;
+				}
+				int var11 = this.scene.getLocBitset(this.currentLevel, var10, var8);
+				if (var11 == 0) {
+					continue;
+				}
+				int var12 = var11 >> 14 & 0x7FFF;
+				LocType var13 = LocType.get(var12);
+				if (var13 == null || var13.name == null) {
+					continue;
+				}
+				if (!var3.matches(var13.name)) {
+					continue;
+				}
+
+				int var14 = this.scene.getInfo(this.currentLevel, var10, var8, var11);
+				int var15 = var14 < 0 ? -1 : var14 & 0x1F;
+				int var16 = var14 < 0 ? 0 : var14 >> 6 & 0x3;
+				int var17 = var13.width;
+				int var18 = var13.length;
+				// a quarter turn swaps the footprint, which moves its centre
+				if (var16 == 1 || var16 == 3) {
+					int var19 = var17;
+					var17 = var18;
+					var18 = var19;
+				}
+
+				int var20 = 0;
+				if (var15 >= 0) {
+					Model var21 = var13.getModel(var15, var16,
+						this.levelHeightmap[this.currentLevel][var10][var8],
+						this.levelHeightmap[this.currentLevel][var10 + 1][var8],
+						this.levelHeightmap[this.currentLevel][var10 + 1][var8 + 1],
+						this.levelHeightmap[this.currentLevel][var10][var8 + 1], -1);
+					if (var21 != null) {
+						var20 = var21.maxY / 2;
+					}
+				}
+				var6.add(new DebugOverlay.Target(var12, var13.name,
+					var10 * 128 + var17 * 64, var8 * 128 + var18 * 64, var20));
+			}
+		}
+
+		// Creatures are deliberately not gathered here. They are already a short
+		// live list the client maintains, so the frame draws them directly -- see
+		// drawBwanaOverlay. That keeps their membership as current as their
+		// position, instead of half a second behind it.
+		DebugOverlay.setFilter(arg0);
+
+		DebugOverlay.Target[] var22 = new DebugOverlay.Target[var6.size()];
+		for (int var23 = 0; var23 < var22.length; var23++) {
+			var22[var23] = (DebugOverlay.Target) var6.get(var23);
+		}
+		DebugOverlay.setTargets(var22, this.sceneBaseTileX, this.sceneBaseTileZ);
+	}
+
+	/**
+	 * True if a projected point is far enough inside the viewport to draw a marker.
+	 * <p>
+	 * projectFromGround only rejects points behind the camera, so anything off to
+	 * the side still returns coordinates — just ones outside the 512x334 view. The
+	 * raster clips them, but a marker straddling an edge leaves a stub behind that
+	 * slides along the border as the camera turns, which reads as a crosshair
+	 * anchored to nothing.
+	 */
+	private boolean overlayPointVisible(int arg0, int arg1) {
+		return arg0 >= 6 && arg1 >= 6
+			&& arg0 < this.areaViewport.width - 6 && arg1 < this.areaViewport.height - 6;
+	}
+
+	/**
+	 * Resolve a target's model centre for this frame, or false if it cannot be
+	 * drawn.
+	 * <p>
+	 * Scenery uses the anchor stored at refresh time; creatures are looked up by
+	 * index so a walking NPC's marker tracks it rather than lagging behind by
+	 * however long ago the list was rebuilt. An index whose entity has gone —
+	 * despawned, or the slot reused — simply fails here and the marker disappears.
+	 */
+	private boolean resolveOverlayTarget(DebugOverlay.Target arg0) {
+		if (arg0.kind == DebugOverlay.KIND_LOC) {
+			this.projectFromGround(arg0.anchorZ, arg0.anchorX, -1, arg0.centreHeight);
+			return this.projectX >= 0 && this.overlayPointVisible(this.projectX, this.projectY);
+		}
+		// Resolve by identity, not by slot. Reading the slot alone would keep drawing
+		// the crosshair after the creature despawned -- on whatever the client put in
+		// that slot next, still labelled with the old name.
+		EntityInfo var2 = this.resolveHandle(arg0.handle);
+		if (var2 == null) {
+			return false;
+		}
+		PathingEntity var3 = this.pathingFor(arg0.handle);
+		if (var3 == null) {
+			return false;
+		}
+		this.projectFromGround(var3.z, var3.x, -1, var3.height / 2);
+		return this.projectX >= 0 && this.overlayPointVisible(this.projectX, this.projectY);
+	}
+
+	/**
+	 * The live entity behind a handle, for code that needs the client object rather
+	 * than a snapshot of it.
+	 * <p>
+	 * Goes through {@code resolveHandle}'s slot for creatures but re-checks the
+	 * identity here too, so this can never hand back the wrong occupant of a reused
+	 * slot even if called directly.
+	 */
+	private PathingEntity pathingFor(bwana.inspect.EntityHandle arg0) {
+		if (arg0 == null) {
+			return null;
+		}
+		int var2 = arg0.getSlot();
+		if (arg0.getKind() == EntityInfo.KIND_NPC) {
+			NpcEntity var3 = var2 >= 0 && var2 < this.npcs.length ? this.npcs[var2] : null;
+			if (var3 == null || var3.type == null) {
+				return null;
+			}
+			return arg0.matches(bwana.inspect.EntityHandle.forNpc((int) var3.type.index, var2,
+				var3.type.name)) ? var3 : null;
+		}
+		if (arg0.getKind() != EntityInfo.KIND_PLAYER) {
+			return null;
+		}
+		PlayerEntity var4 = var2 >= 0 && var2 < this.players.length ? this.players[var2] : null;
+		if (var4 != null && var4.name != null
+				&& arg0.matches(bwana.inspect.EntityHandle.forPlayer(var4.name, var2))) {
+			return var4;
+		}
+		for (int var5 = 0; var5 < this.playerCount; var5++) {
+			int var6 = this.playerIds[var5];
+			PlayerEntity var7 = this.players[var6];
+			if (var7 != null && var7.name != null
+					&& arg0.matches(bwana.inspect.EntityHandle.forPlayer(var7.name, var6))) {
+				return var7;
+			}
+		}
+		return null;
+	}
+
+	/**
+	 * Draw a crosshair at each overlay target's projected model centre.
+	 * <p>
+	 * Projection happens here, inside the frame, which is what keeps every marker
+	 * welded to its object as the camera turns. A target whose projection fails is
+	 * behind the camera or out of range, and is simply skipped — that is how
+	 * markers disappear when an object leaves the screen, with no bookkeeping.
+	 */
+	private void drawBwanaOverlay() {
+		if (!DebugOverlay.isEnabled()) {
+			return;
+		}
+		// Scenery anchors are scene-local. Crossing a region boundary rebuilds the
+		// scene and moves its origin, so anchors gathered before the shift now
+		// point somewhere else entirely -- markers detach and wander until the next
+		// refresh. Drop them rather than draw them wrong.
+		DebugOverlay.Target[] var1 = DebugOverlay.matchesScene(this.sceneBaseTileX, this.sceneBaseTileZ)
+			? DebugOverlay.getTargets()
+			: new DebugOverlay.Target[0];
+		int var2 = super.mouseX - VIEWPORT_X;
+		int var3 = super.mouseY - VIEWPORT_Y;
+		DebugOverlay.Target var4 = null;
+		int var5 = -1;
+
+		for (int var7 = 0; var7 < var1.length; var7++) {
+			DebugOverlay.Target var8 = var1[var7];
+			if (!this.resolveOverlayTarget(var8)) {
+				continue;
+			}
+			int var9 = this.projectX;
+			int var10 = this.projectY;
+			// colour by kind so scenery, creatures and players stay distinguishable
+			int var15 = var8.kind == DebugOverlay.KIND_NPC ? 0xFF6600
+				: (var8.kind == DebugOverlay.KIND_PLAYER ? 0xFFFFFF : 0x00FFFF);
+			Pix2D.hline(0, 0, var10 + 1, 7, var9 - 3);
+			Pix2D.vline(0, 0, var10 - 3, 7, var9 + 1);
+			Pix2D.hline(var15, 0, var10, 7, var9 - 3);
+			Pix2D.vline(var15, 0, var10 - 3, 7, var9);
+
+			int var11 = var9 - var2;
+			int var12 = var10 - var3;
+			int var13 = var11 * var11 + var12 * var12;
+			if (var13 < 100 && (var5 < 0 || var13 < var5)) {
+				var5 = var13;
+				var4 = var8;
+			}
+		}
+
+		// creatures, straight from the client's live lists
+		for (int var16 = 0; var16 < this.npcCount + this.playerCount; var16++) {
+			PathingEntity var17;
+			int var18;
+			String var19;
+			int var20;
+			if (var16 < this.npcCount) {
+				NpcEntity var22 = this.npcs[this.npcIds[var16]];
+				if (var22 == null || var22.type == null) {
+					continue;
+				}
+				var17 = var22;
+				var19 = var22.type.name;
+				var18 = (int) var22.type.index;
+				var20 = 0xFF6600;
+			} else {
+				PlayerEntity var23 = this.players[this.playerIds[var16 - this.npcCount]];
+				if (var23 == null) {
+					continue;
+				}
+				var17 = var23;
+				var19 = var23.name;
+				var18 = -1;
+				var20 = 0xFFFFFF;
+			}
+			if (!DebugOverlay.accepts(var19)) {
+				continue;
+			}
+			this.projectFromGround(var17.z, var17.x, -1, var17.height / 2);
+			if (this.projectX < 0 || !this.overlayPointVisible(this.projectX, this.projectY)) {
+				continue;
+			}
+			int var24 = this.projectX;
+			int var25 = this.projectY;
+			Pix2D.hline(0, 0, var25 + 1, 7, var24 - 3);
+			Pix2D.vline(0, 0, var25 - 3, 7, var24 + 1);
+			Pix2D.hline(var20, 0, var25, 7, var24 - 3);
+			Pix2D.vline(var20, 0, var25 - 3, 7, var24);
+
+			int var26 = var24 - var2;
+			int var27 = var25 - var3;
+			if (var26 * var26 + var27 * var27 < 100 && this.fontPlain12 != null) {
+				String var28 = var18 < 0 ? var19 : var19 + " (" + var18 + ")";
+				this.fontPlain12.drawString(var24 + 7, var25 - 3, false, 0, var28);
+				this.fontPlain12.drawString(var24 + 6, var25 - 4, false, 0xFFFF00, var28);
+			}
+		}
+
+		// name and id for whichever scenery marker the cursor is nearest, drawn
+		// last so it sits above the other crosshairs
+		if (var4 != null && this.fontPlain12 != null && this.resolveOverlayTarget(var4)) {
+			String var14 = var4.kind == DebugOverlay.KIND_PLAYER
+				? var4.name
+				: var4.name + " (" + var4.id + ")";
+			this.fontPlain12.drawString(this.projectX + 7, this.projectY - 3, false, 0, var14);
+			this.fontPlain12.drawString(this.projectX + 6, this.projectY - 4, false, 0xFFFF00, var14);
+		}
+	}
+
+	/**
+	 * Screen box of the model's bounding volume: its horizontal radius about the
+	 * anchor, from terrain height up to the model's own height.
+	 */
+	private void projectModelBounds(ProjectionDebug arg0) {
+		int var2 = arg0.modelRadius;
+		if (var2 <= 0) {
+			var2 = 64;
+		}
+		int var3 = Integer.MAX_VALUE;
+		int var4 = Integer.MIN_VALUE;
+		int var5 = Integer.MAX_VALUE;
+		int var6 = Integer.MIN_VALUE;
+		for (int var7 = 0; var7 < 8; var7++) {
+			int var8 = arg0.anchorX + ((var7 & 0x1) == 0 ? -var2 : var2);
+			int var9 = arg0.anchorZ + ((var7 & 0x2) == 0 ? -var2 : var2);
+			int var10 = (var7 & 0x4) == 0 ? 0 : arg0.modelMaxY;
+			this.projectFromGround(var9, var8, -1, var10);
+			if (this.projectX < 0) {
+				return;
+			}
+			if (this.projectX < var3) {
+				var3 = this.projectX;
+			}
+			if (this.projectX > var4) {
+				var4 = this.projectX;
+			}
+			if (this.projectY < var5) {
+				var5 = this.projectY;
+			}
+			if (this.projectY > var6) {
+				var6 = this.projectY;
+			}
+		}
+		arg0.modelBoxValid = true;
+		arg0.modelBoxX = var3;
+		arg0.modelBoxY = var5;
+		arg0.modelBoxW = var4 - var3;
+		arg0.modelBoxH = var6 - var5;
+	}
+
+	/**
+	 * Re-find a previously selected entity, or null if it has gone.
+	 * <p>
+	 * A creature is matched on its array index <b>and</b> its type id. Index alone
+	 * is not enough: when an NPC despawns its slot is reused, and a tracker holding
+	 * only the index would silently follow a different creature while still
+	 * reporting the old one's name. Scenery is matched on tile and id, which cannot
+	 * move.
+	 */
+	public EntityInfo resolveTarget(EntityInfo arg0) {
+		return arg0 == null ? null : this.resolveHandle(arg0.handle);
+	}
+
+	/**
+	 * Re-find an entity from its identity alone.
+	 * <p>
+	 * The adapter's half of the identity contract, and the only place in the client
+	 * that turns a handle back into a live entity. The pattern for creatures is
+	 * always the same: use the slot as a <i>hint</i> to look in one place, then ask
+	 * the handle whether what was found is actually the same thing. Players get a
+	 * scan on top of that, because their slot is reassigned freely and a lock keyed
+	 * on the name should survive that — which is exactly what the old
+	 * index-as-identity code could not do.
+	 */
+	public EntityInfo resolveHandle(bwana.inspect.EntityHandle arg0) {
+		if (arg0 == null || !this.ingame || this.scene == null) {
+			return null;
+		}
+		int var2 = arg0.getKind();
+		if (var2 == EntityInfo.KIND_LOC) {
+			// Scenery identity is a world tile, so convert back through the current
+			// scene origin. Crossing a region boundary shifts that origin; going via
+			// the world coordinate is what keeps the lock pointing at the same object
+			// rather than at whatever now occupies the old scene-local tile.
+			int var3 = arg0.getWorldX() - this.sceneBaseTileX;
+			int var4 = arg0.getWorldY() - this.sceneBaseTileZ;
+			if (var3 < 0 || var3 > 103 || var4 < 0 || var4 > 103) {
+				return null;
+			}
+			int var5 = this.scene.getLocBitset(this.currentLevel, var3, var4);
+			if (var5 == 0 || (var5 >> 14 & 0x7FFF) != arg0.getTypeId()) {
+				return null;
+			}
+			LocType var6 = LocType.get(arg0.getTypeId());
+			if (var6 == null) {
+				return null;
+			}
+			int[] var7 = this.projectTileBox(var3, var4, var6.width, var6.length, 0);
+			return new EntityInfo(EntityInfo.KIND_LOC, arg0.getTypeId(), var6.name,
+				"loc, " + var6.width + "x" + var6.length,
+				var3 + this.sceneBaseTileX, var4 + this.sceneBaseTileZ,
+				this.currentLevel, -1, -1, var3, var4,
+				var7 == null ? -1 : var7[0], var7 == null ? -1 : var7[1],
+				var7 == null ? 0 : var7[2], var7 == null ? 0 : var7[3],
+				var7 == null ? 0 : var7[4], var7 == null ? 0 : var7[5],
+				var7 != null, -1, -1, null);
+		}
+
+		if (var2 == EntityInfo.KIND_GROUND_ITEM) {
+			// Identity is the tile plus the item type, so re-finding it is a matter of
+			// checking the stack is still there.
+			int var20 = arg0.getWorldX() - this.sceneBaseTileX;
+			int var21 = arg0.getWorldY() - this.sceneBaseTileZ;
+			if (var20 < 0 || var20 > 103 || var21 < 0 || var21 > 103) {
+				return null;
+			}
+			LinkList var22 = this.levelObjStacks[this.currentLevel][var20][var21];
+			if (var22 == null) {
+				return null;
+			}
+			for (ObjStackEntity var23 = (ObjStackEntity) var22.tail((byte) 2);
+					var23 != null; var23 = (ObjStackEntity) var22.prev(false)) {
+				if (var23.index == arg0.getTypeId()) {
+					ObjType var24 = ObjType.get(var23.index);
+					return new EntityInfo(EntityInfo.KIND_GROUND_ITEM, var23.index,
+						var24 == null || var24.name == null ? "item" : var24.name,
+						"ground item", arg0.getWorldX(), arg0.getWorldY(), this.currentLevel,
+						-1, -1, var20, var21, -1, -1, 0, 0, 0, 0, true, -1, -1, null,
+						arg0);
+				}
+			}
+			return null;
+		}
+		if (var2 == EntityInfo.KIND_NPC) {
+			int var8 = arg0.getSlot();
+			if (var8 < 0 || var8 >= this.npcs.length) {
+				return null;
+			}
+			NpcEntity var9 = this.npcs[var8];
+			if (var9 == null || var9.type == null) {
+				return null;
+			}
+			// the hint found something; the handle decides whether it is ours
+			if (!arg0.matches(bwana.inspect.EntityHandle.forNpc((int) var9.type.index, var8,
+					var9.type.name))) {
+				return null;
+			}
+			return this.describeNpc(var9, var8);
+		}
+
+		if (var2 != EntityInfo.KIND_PLAYER) {
+			return null;
+		}
+		int var10 = arg0.getSlot();
+		if (var10 >= 0 && var10 < this.players.length) {
+			PlayerEntity var11 = this.players[var10];
+			if (var11 != null && var11.name != null
+					&& arg0.matches(bwana.inspect.EntityHandle.forPlayer(var11.name, var10))) {
+				return this.describePlayer(var11, var10);
+			}
+		}
+		// Hint missed. A player's identity is the name, so a moved slot is not a
+		// loss -- find them again rather than dropping the lock.
+		for (int var12 = 0; var12 < this.playerCount; var12++) {
+			int var13 = this.playerIds[var12];
+			PlayerEntity var14 = this.players[var13];
+			if (var14 != null && var14.name != null
+					&& arg0.matches(bwana.inspect.EntityHandle.forPlayer(var14.name, var13))) {
+				return this.describePlayer(var14, var13);
+			}
+		}
+		return null;
+	}
+
+	/** One place that builds an NPC record, so its handle is always formed the same way. */
+	private EntityInfo describeNpc(NpcEntity arg0, int arg1) {
+		return this.describeEntity(arg0, EntityInfo.KIND_NPC, (int) arg0.type.index,
+			arg0.type.name, "npc, size " + arg0.type.size
+				+ (arg0.type.vislevel > 0 ? ", combat " + arg0.type.vislevel : ""),
+			bwana.inspect.EntityHandle.forNpc((int) arg0.type.index, arg1, arg0.type.name));
+	}
+
+	/** The same for players, whose handle is keyed on the name rather than the slot. */
+	private EntityInfo describePlayer(PlayerEntity arg0, int arg1) {
+		return this.describeEntity(arg0, EntityInfo.KIND_PLAYER, -1, arg0.name,
+			"player, combat " + arg0.combatLevel,
+			bwana.inspect.EntityHandle.forPlayer(arg0.name, arg1));
+	}
+
+	/**
+	 * The overlay marker for an entity.
+	 * <p>
+	 * Reuses the overlay's own target type so the selection crosshair is resolved
+	 * by the same per-frame code as every other marker, rather than a parallel
+	 * implementation that could disagree about where a thing is.
+	 */
+	public DebugOverlay.Target markerFor(EntityInfo arg0) {
+		if (arg0 == null) {
+			return null;
+		}
+		if (arg0.kind == EntityInfo.KIND_NPC || arg0.kind == EntityInfo.KIND_PLAYER) {
+			int var2 = arg0.kind == EntityInfo.KIND_NPC
+				? DebugOverlay.KIND_NPC : DebugOverlay.KIND_PLAYER;
+			return new DebugOverlay.Target(var2, arg0.handle, arg0.id, arg0.name);
+		}
+		LocType var3 = LocType.get(arg0.id);
+		int var4 = var3 == null ? 1 : var3.width;
+		int var5 = var3 == null ? 1 : var3.length;
+		int var6 = this.scene.getLocBitset(this.currentLevel, arg0.tileX, arg0.tileZ);
+		int var7 = var6 == 0 ? -1 : this.scene.getInfo(this.currentLevel, arg0.tileX, arg0.tileZ, var6);
+		int var8 = var7 < 0 ? 0 : var7 >> 6 & 0x3;
+		if (var8 == 1 || var8 == 3) {
+			int var9 = var4;
+			var4 = var5;
+			var5 = var9;
+		}
+		int var10 = 0;
+		if (var3 != null && var7 >= 0) {
+			Model var11 = var3.getModel(var7 & 0x1F, var8,
+				this.levelHeightmap[this.currentLevel][arg0.tileX][arg0.tileZ],
+				this.levelHeightmap[this.currentLevel][arg0.tileX + 1][arg0.tileZ],
+				this.levelHeightmap[this.currentLevel][arg0.tileX + 1][arg0.tileZ + 1],
+				this.levelHeightmap[this.currentLevel][arg0.tileX][arg0.tileZ + 1], -1);
+			if (var11 != null) {
+				var10 = var11.maxY / 2;
+			}
+		}
+		return new DebugOverlay.Target(arg0.id, arg0.name,
+			arg0.tileX * 128 + var4 * 64, arg0.tileZ * 128 + var5 * 64, var10);
+	}
+
+	/** A loc the renderer reported under the cursor. */
+	private void addPickedLoc(ArrayList arg0, int arg1, int arg2, int arg3) {
+		LocType var5 = LocType.get(arg1);
+		String var6 = var5 == null || var5.name == null ? "(unnamed)" : var5.name;
+		String var7 = "loc";
+		if (var5 != null) {
+			var7 = var7 + ", " + var5.width + "x" + var5.length;
+		}
+		int[] var8 = this.projectTileBox(arg2, arg3,
+			var5 == null ? 1 : var5.width, var5 == null ? 1 : var5.length, 0);
+		arg0.add(new EntityInfo(EntityInfo.KIND_LOC, arg1, var6, var7,
+			arg2 + this.sceneBaseTileX, arg3 + this.sceneBaseTileZ, this.currentLevel,
+			-1, -1, arg2, arg3,
+			var8 == null ? -1 : var8[0], var8 == null ? -1 : var8[1],
+			var8 == null ? 0 : var8[2], var8 == null ? 0 : var8[3],
+			var8 == null ? 0 : var8[4], var8 == null ? 0 : var8[5],
+			var8 != null, -1, -1, null));
+	}
+
+	/** Describe a picked player or NPC; no cursor-distance test, picking did that. */
+	private void addPathing(ArrayList arg0, PathingEntity arg1, int arg2, int arg3,
+			String arg4, String arg5, bwana.inspect.EntityHandle arg6) {
+		arg0.add(this.describeEntity(arg1, arg2, arg3, arg4, arg5, arg6));
+	}
+
+	/** Build the record for a moving entity, projecting its extent for the box. */
+	private EntityInfo describeEntity(PathingEntity arg1, int arg2, int arg3,
+			String arg4, String arg5, bwana.inspect.EntityHandle arg6) {
+		this.projectFromGround(arg1.z, arg1.x, -1, 0);
+		int var7 = this.projectX;
+		int var8 = this.projectY;
+		this.projectFromGround(arg1.z, arg1.x, -1, arg1.height);
+		int var9 = this.projectY < 0 ? var8 - 40 : this.projectY;
+		this.projectFromGround(arg1.z, arg1.x - arg1.size * 64, -1, arg1.height / 2);
+		int var10 = this.projectX;
+		this.projectFromGround(arg1.z, arg1.x + arg1.size * 64, -1, arg1.height / 2);
+		int var11 = this.projectX;
+		int var12 = var10 < var11 ? var10 : var11;
+		int var13 = var10 < var11 ? var11 : var10;
+		if (var12 < 0 || var13 < 0) {
+			var12 = var7 - 12;
+			var13 = var7 + 12;
+		}
+		String var14 = arg1.targetId == -1 ? null : this.describeTarget(arg1.targetId);
+		return new EntityInfo(arg2, arg3, arg4, arg5,
+			(arg1.x >> 7) + this.sceneBaseTileX, (arg1.z >> 7) + this.sceneBaseTileZ,
+			this.currentLevel, arg1.x, arg1.z, arg1.x >> 7, arg1.z >> 7,
+			var7, var8, var12, var9, var13 - var12, var8 - var9,
+			var7 >= 0, arg1.primarySeqId, arg1.yaw, var14, arg6);
+	}
+
+	public EntityInfo[] inspectAt(int arg0, int arg1) {
+		if (!this.ingame || this.scene == null) {
+			return NO_ENTITIES;
+		}
+		int var3 = arg0 - VIEWPORT_X;
+		int var4 = arg1 - VIEWPORT_Y;
+		ArrayList var5 = new ArrayList();
+
+		// players and NPCs: project each one and keep those near the cursor
+		for (int var6 = -1; var6 < this.playerCount; var6++) {
+			PlayerEntity var7 = var6 == -1
+				? this.localPlayer
+				: this.players[this.playerIds[var6]];
+			if (var7 == null || var7.name == null) {
+				continue;
+			}
+			EntityInfo var8 = this.describePathing(var7, EntityInfo.KIND_PLAYER, -1, var7.name,
+				"combat " + var7.combatLevel, var3, var4);
+			if (var8 != null) {
+				var5.add(var8);
+			}
+		}
+		for (int var9 = 0; var9 < this.npcCount; var9++) {
+			NpcEntity var10 = this.npcs[this.npcIds[var9]];
+			if (var10 == null) {
+				continue;
+			}
+			NpcType var11 = var10.type;
+			String var12 = var11 == null ? null : "size " + var11.size
+				+ (var11.vislevel > 0 ? ", combat " + var11.vislevel : "");
+			EntityInfo var13 = this.describePathing(var10, EntityInfo.KIND_NPC,
+				var11 == null ? -1 : (int) var11.index,
+				var11 == null ? "(loading)" : var11.name, var12, var3, var4);
+			if (var13 != null) {
+				var5.add(var13);
+			}
+		}
+
+		// World3D.clickTileX looks like a hover result but is not: the client only
+		// fills it from mouseClickX/Y inside its click handler, so it stays -1
+		// while you merely hover. Driving the scene's own picking every frame would
+		// work but mutates state the click handler depends on, so the tile under
+		// the cursor is found here instead.
+		int[] var19 = this.pickTile(var3, var4);
+		int var14 = var19 == null ? -1 : var19[0];
+		int var15 = var19 == null ? -1 : var19[1];
+		// locs are found by their own column test, not by the hovered ground tile
+		this.pickLocs(var5, var3, var4);
+		if (var14 >= 0 && var15 >= 0) {
+			this.addGroundItemsAt(var5, var14, var15);
+			int[] var18 = this.projectTileBox(var14, var15, 1, 1, 0);
+			var5.add(new EntityInfo(EntityInfo.KIND_TILE, -1, "Tile", null,
+				var14 + this.sceneBaseTileX, var15 + this.sceneBaseTileZ, this.currentLevel,
+				-1, -1, var14, var15,
+				var18 == null ? var3 : var18[0], var18 == null ? var4 : var18[1],
+				var18 == null ? 0 : var18[2], var18 == null ? 0 : var18[3],
+				var18 == null ? 0 : var18[4], var18 == null ? 0 : var18[5],
+				true, -1, -1, null));
+		}
+
+		EntityInfo[] var16 = new EntityInfo[var5.size()];
+		for (int var17 = 0; var17 < var16.length; var17++) {
+			var16[var17] = (EntityInfo) var5.get(var17);
+		}
+		this.rankByRelevance(var16);
+		return var16;
+	}
+
+	/** Project a moving entity and describe it if the cursor is close enough. */
+	private EntityInfo describePathing(PathingEntity arg0, int arg1, int arg2, String arg3,
+			String arg4, int arg5, int arg6) {
+		this.projectFromGround(arg0.z, arg0.x, -1, 0);
+		int var8 = this.projectX;
+		int var9 = this.projectY;
+		if (var8 < 0) {
+			return null;
+		}
+		this.projectFromGround(arg0.z, arg0.x, -1, arg0.height);
+		int var10 = this.projectX;
+		int var11 = this.projectY;
+		// horizontal extent from the entity's own footprint rather than a guess
+		this.projectFromGround(arg0.z, arg0.x - arg0.size * 64, -1, arg0.height / 2);
+		int var12 = this.projectX;
+		this.projectFromGround(arg0.z, arg0.x + arg0.size * 64, -1, arg0.height / 2);
+		int var13 = this.projectX;
+
+		int var14 = var12 < var13 ? var12 : var13;
+		int var15 = var12 < var13 ? var13 : var12;
+		if (var14 < 0 || var15 < 0) {
+			var14 = var8 - 12;
+			var15 = var8 + 12;
+		}
+		int var16 = var11 < 0 ? var9 - 40 : var11;
+
+		int var17 = var8 - arg5;
+		int var18 = (var9 + var16) / 2 - arg6;
+		if (var17 * var17 + var18 * var18 > INSPECT_RADIUS * INSPECT_RADIUS) {
+			return null;
+		}
+
+		String var19 = null;
+		if (arg0.targetId != -1) {
+			var19 = this.describeTarget(arg0.targetId);
+		}
+		return new EntityInfo(arg1, arg2, arg3, arg4,
+			(arg0.x >> 7) + this.sceneBaseTileX, (arg0.z >> 7) + this.sceneBaseTileZ,
+			this.currentLevel, arg0.x, arg0.z, arg0.x >> 7, arg0.z >> 7,
+			var8, var9, var14, var16, var15 - var14, var9 - var16,
+			true, arg0.primarySeqId, arg0.yaw, var19);
+	}
+
+	/** How far around the player to search for the tile under the cursor. */
+	private static final int PICK_RADIUS = 26;
+
+	/**
+	 * Order candidates so the first is the one you meant.
+	 * <p>
+	 * The loc column test has to be generous — it has no model height to work with
+	 * — so several objects legitimately contain the cursor at once and the raw list
+	 * is unusable. Ranking is: creatures first, then named scenery, then the
+	 * unnamed scenery that makes up most of the noise, then the bare ground tile;
+	 * ties broken by distance from the camera, so the thing drawn in front wins.
+	 */
+	private void rankByRelevance(EntityInfo[] arg0) {
+		long[] var2 = new long[arg0.length];
+		for (int var3 = 0; var3 < arg0.length; var3++) {
+			EntityInfo var4 = arg0[var3];
+			int var5;
+			if (var4.kind == EntityInfo.KIND_NPC || var4.kind == EntityInfo.KIND_PLAYER) {
+				var5 = 0;
+			} else if (var4.kind == EntityInfo.KIND_GROUND_ITEM) {
+				var5 = 1;
+			} else if (var4.kind == EntityInfo.KIND_TILE) {
+				var5 = 4;
+			} else {
+				var5 = isNamed(var4.name) ? 2 : 3;
+			}
+			int var6 = var4.tileX * 128 + 64 - this.cameraX;
+			int var7 = var4.tileZ * 128 + 64 - this.cameraZ;
+			long var8 = (long) var6 * (long) var6 + (long) var7 * (long) var7;
+			if (var8 > 16777215L) {
+				var8 = 16777215L;
+			}
+			var2[var3] = (long) var5 * 16777216L + var8;
+		}
+		for (int var10 = 0; var10 < arg0.length; var10++) {
+			int var11 = var10;
+			for (int var12 = var10 + 1; var12 < arg0.length; var12++) {
+				if (var2[var12] < var2[var11]) {
+					var11 = var12;
+				}
+			}
+			long var13 = var2[var10];
+			var2[var10] = var2[var11];
+			var2[var11] = var13;
+			EntityInfo var15 = arg0[var10];
+			arg0[var10] = arg0[var11];
+			arg0[var11] = var15;
+		}
+	}
+
+	/** Scenery with no name is decoration the game gives you nothing to do with. */
+	private static boolean isNamed(String arg0) {
+		return arg0 != null && arg0.length() > 0 && arg0.charAt(0) != '(';
+	}
+
+	/**
+	 * Find the scene tile under a viewport point, or null.
+	 * <p>
+	 * Projects each nearby tile's four corners and tests whether the cursor falls
+	 * inside the resulting quad. Where several tiles contain the point — which
+	 * happens constantly, since a hill behind you projects over the ground in
+	 * front — the one nearest the camera wins, matching what is drawn on top.
+	 * <p>
+	 * Bounded to a radius around the player: the scene is 104x104, and projecting
+	 * all of it several times a second would be wasted on tiles that are behind the
+	 * camera or a hundred tiles away.
+	 */
+	private int[] pickTile(int arg0, int arg1) {
+		if (this.localPlayer == null) {
+			return null;
+		}
+		int var3 = this.localPlayer.x >> 7;
+		int var4 = this.localPlayer.z >> 7;
+		int var5 = -1;
+		int var6 = -1;
+		long var7 = Long.MAX_VALUE;
+
+		int[] var9 = new int[8];
+		for (int var10 = -PICK_RADIUS; var10 <= PICK_RADIUS; var10++) {
+			int var11 = var4 + var10;
+			if (var11 < 0 || var11 > 103) {
+				continue;
+			}
+			for (int var12 = -PICK_RADIUS; var12 <= PICK_RADIUS; var12++) {
+				int var13 = var3 + var12;
+				if (var13 < 0 || var13 > 103) {
+					continue;
+				}
+				if (!this.projectTileCorners(var13, var11, var9)) {
+					continue;
+				}
+				if (!pointInQuad(arg0, arg1, var9)) {
+					continue;
+				}
+				int var14 = var13 * 128 + 64 - this.cameraX;
+				int var15 = var11 * 128 + 64 - this.cameraZ;
+				long var16 = (long) var14 * (long) var14 + (long) var15 * (long) var15;
+				if (var16 < var7) {
+					var7 = var16;
+					var5 = var13;
+					var6 = var11;
+				}
+			}
+		}
+		return var5 < 0 ? null : new int[] { var5, var6 };
+	}
+
+	/** Fills out[0..7] with the tile's four projected corners, or returns false. */
+	private boolean projectTileCorners(int arg0, int arg1, int[] arg2) {
+		int var4 = arg0 * 128;
+		int var5 = var4 + 128;
+		int var6 = arg1 * 128;
+		int var7 = var6 + 128;
+		this.projectFromGround(var6, var4, -1, 0);
+		if (this.projectX < 0) {
+			return false;
+		}
+		arg2[0] = this.projectX;
+		arg2[1] = this.projectY;
+		this.projectFromGround(var6, var5, -1, 0);
+		if (this.projectX < 0) {
+			return false;
+		}
+		arg2[2] = this.projectX;
+		arg2[3] = this.projectY;
+		this.projectFromGround(var7, var5, -1, 0);
+		if (this.projectX < 0) {
+			return false;
+		}
+		arg2[4] = this.projectX;
+		arg2[5] = this.projectY;
+		this.projectFromGround(var7, var4, -1, 0);
+		if (this.projectX < 0) {
+			return false;
+		}
+		arg2[6] = this.projectX;
+		arg2[7] = this.projectY;
+		return true;
+	}
+
+	/** Quad as two triangles; corners are in order around the perimeter. */
+	private static boolean pointInQuad(int arg0, int arg1, int[] arg2) {
+		return inTriangle(arg0, arg1, arg2[0], arg2[1], arg2[2], arg2[3], arg2[4], arg2[5])
+			|| inTriangle(arg0, arg1, arg2[0], arg2[1], arg2[4], arg2[5], arg2[6], arg2[7]);
+	}
+
+	/** Sign-of-cross-product test; consistent signs mean the point is inside. */
+	private static boolean inTriangle(int arg0, int arg1, int arg2, int arg3,
+			int arg4, int arg5, int arg6, int arg7) {
+		int var8 = (arg4 - arg2) * (arg1 - arg3) - (arg5 - arg3) * (arg0 - arg2);
+		int var9 = (arg6 - arg4) * (arg1 - arg5) - (arg7 - arg5) * (arg0 - arg4);
+		int var10 = (arg2 - arg6) * (arg1 - arg7) - (arg3 - arg7) * (arg0 - arg6);
+		boolean var11 = var8 < 0 || var9 < 0 || var10 < 0;
+		boolean var12 = var8 > 0 || var9 > 0 || var10 > 0;
+		return !(var11 && var12);
+	}
+
+	/**
+	 * Project a tile footprint and return {centreX, centreY, boxX, boxY, w, h} in
+	 * viewport coordinates, or null if it is off screen.
+	 * <p>
+	 * Locs and ground items are known by tile rather than by a precise position, so
+	 * their screen location comes from projecting the footprint's four corners
+	 * rather than a single point. The box is the <b>base</b> of the object, not its
+	 * full drawn extent — the client does not expose a model height here — which is
+	 * the right target for a click anyway.
+	 */
+	private int[] projectTileBox(int arg0, int arg1, int arg2, int arg3, int arg4) {
+		int var6 = arg0 * 128;
+		int var7 = (arg0 + (arg2 < 1 ? 1 : arg2)) * 128;
+		int var8 = arg1 * 128;
+		int var9 = (arg1 + (arg3 < 1 ? 1 : arg3)) * 128;
+
+		int var10 = Integer.MAX_VALUE;
+		int var11 = Integer.MIN_VALUE;
+		int var12 = Integer.MAX_VALUE;
+		int var13 = Integer.MIN_VALUE;
+		for (int var14 = 0; var14 < 4; var14++) {
+			int var15 = (var14 & 0x1) == 0 ? var6 : var7;
+			int var16 = (var14 & 0x2) == 0 ? var8 : var9;
+			this.projectFromGround(var16, var15, -1, arg4);
+			if (this.projectX < 0) {
+				return null;
+			}
+			if (this.projectX < var10) {
+				var10 = this.projectX;
+			}
+			if (this.projectX > var11) {
+				var11 = this.projectX;
+			}
+			if (this.projectY < var12) {
+				var12 = this.projectY;
+			}
+			if (this.projectY > var13) {
+				var13 = this.projectY;
+			}
+		}
+		this.projectFromGround((var8 + var9) / 2, (var6 + var7) / 2, -1, arg4);
+		if (this.projectX < 0) {
+			return null;
+		}
+		return new int[] { this.projectX, this.projectY, var10, var12, var11 - var10, var13 - var12 };
+	}
+
+	/** Resolve an interaction target id into something readable. */
+	private String describeTarget(int arg0) {
+		if (arg0 >= 32768) {
+			int var2 = arg0 - 32768;
+			PlayerEntity var3 = var2 == this.LOCAL_PLAYER_INDEX ? this.localPlayer : this.players[var2];
+			return var3 == null || var3.name == null ? "player " + var2 : "player " + var3.name;
+		}
+		NpcEntity var4 = this.npcs[arg0];
+		if (var4 == null || var4.type == null) {
+			return "npc " + arg0;
+		}
+		return "npc " + var4.type.name;
+	}
+
+	/**
+	 * Nominal model height per layer, in the client's 1/128-tile units (128 = one
+	 * tile), scaled per loc by its resizey.
+	 * <p>
+	 * LocType carries no height, so a loc is treated as a column of this height
+	 * above its tile. These are deliberately tall: greater height projects to a
+	 * <i>smaller</i> screen Y, so a column that is too short leaves its top edge
+	 * below a tall canopy, and the cursor sitting right on a tree lands above the
+	 * box and misses while drifting down toward the trunk hits. Ground decorations
+	 * stay flat so hovering the air above a flower does not report it.
+	 */
+	private static final int[] LOC_COLUMN_HEIGHT = new int[] { 900, 600, 900, 24 };
+
+	/**
+	 * Tiles of horizontal slack per layer.
+	 * <p>
+	 * A tree is wider than the tile it stands on — a willow's fronds hang a good
+	 * tile past its trunk — so testing the bare footprint misses every part of the
+	 * canopy that overhangs, which is most of it. Ground decorations get none: they
+	 * are flat and exactly tile-sized, and slack there would have flowers
+	 * responding to a cursor on the next tile over.
+	 */
+	private static final int[] LOC_SPREAD = new int[] { 1, 1, 1, 0 };
+
+	/**
+	 * Locs whose column contains the cursor, nearest the camera first.
+	 * <p>
+	 * A tall object cannot be found from the tile under the cursor: hovering a
+	 * tree's canopy hit-tests the <i>ground behind the tree</i>, several tiles
+	 * further away, which is why flat ground decorations resolved and trees did
+	 * not. So every nearby tile carrying a loc is projected as a vertical column —
+	 * its footprint at ground level and again at a nominal height — and the cursor
+	 * is tested against that.
+	 * <p>
+	 * There is no list of locs to walk: the scene keeps them as packed bitsets per
+	 * layer, with the config id in the top 15 bits above bit 14.
+	 */
+	private void pickLocs(ArrayList arg0, int arg1, int arg2) {
+		if (this.localPlayer == null || this.scene == null) {
+			return;
+		}
+		int var4 = this.localPlayer.x >> 7;
+		int var5 = this.localPlayer.z >> 7;
+		String[] var6 = new String[] { "wall", "wall decoration", "loc", "ground decoration" };
+
+		ArrayList var7 = new ArrayList();
+		int[] var8 = new int[8];
+		for (int var9 = -PICK_RADIUS; var9 <= PICK_RADIUS; var9++) {
+			int var10 = var5 + var9;
+			if (var10 < 0 || var10 > 103) {
+				continue;
+			}
+			for (int var11 = -PICK_RADIUS; var11 <= PICK_RADIUS; var11++) {
+				int var12 = var4 + var11;
+				if (var12 < 0 || var12 > 103) {
+					continue;
+				}
+				int[] var13 = new int[] {
+					this.scene.getWallBitset(this.currentLevel, var12, var10),
+					this.scene.getWallDecorationBitset(this.currentLevel, var10, 3, var12),
+					this.scene.getLocBitset(this.currentLevel, var12, var10),
+					this.scene.getGroundDecorationBitset(this.currentLevel, var12, var10)
+				};
+				for (int var14 = 0; var14 < var13.length; var14++) {
+					if (var13[var14] == 0) {
+						continue;
+					}
+					int var15 = var13[var14] >> 14 & 0x7FFF;
+					LocType var16 = LocType.get(var15);
+					int var17 = var16 == null ? 1 : var16.width;
+					int var18 = var16 == null ? 1 : var16.length;
+					// resizey is the model's vertical scale, 128 being unscaled --
+					// the closest thing to a height the config offers
+					int var35 = LOC_COLUMN_HEIGHT[var14];
+					if (var16 != null && var16.resizey > 0) {
+						var35 = var35 * var16.resizey / 128;
+					}
+					if (!this.projectColumn(var12, var10, var17, var18,
+							var35, LOC_SPREAD[var14], var8)) {
+						continue;
+					}
+					if (arg1 < var8[0] || arg1 > var8[2] || arg2 < var8[1] || arg2 > var8[3]) {
+						continue;
+					}
+					int var19 = var12 * 128 + 64 - this.cameraX;
+					int var20 = var10 * 128 + 64 - this.cameraZ;
+					long var21 = (long) var19 * (long) var19 + (long) var20 * (long) var20;
+					// Values, not the LocType itself: it comes from a ten-slot ring
+					// cache that is reset and re-decoded in place, so a reference kept
+					// across this loop names whichever loc landed in that slot later.
+					var7.add(new Object[] { Long.valueOf(var21),
+						Integer.valueOf(var15),
+						var16 == null || var16.name == null ? "(unnamed)" : var16.name,
+						var6[var14], Integer.valueOf(var12), Integer.valueOf(var10),
+						Integer.valueOf(var17), Integer.valueOf(var18) });
+				}
+			}
+		}
+
+		// nearest the camera first, matching what is drawn on top
+		for (int var23 = 0; var23 < var7.size(); var23++) {
+			int var24 = var23;
+			for (int var25 = var23 + 1; var25 < var7.size(); var25++) {
+				if (((Long) ((Object[]) var7.get(var25))[0]).longValue()
+						< ((Long) ((Object[]) var7.get(var24))[0]).longValue()) {
+					var24 = var25;
+				}
+			}
+			Object var30 = var7.get(var23);
+			var7.set(var23, var7.get(var24));
+			var7.set(var24, var30);
+		}
+
+		for (int var26 = 0; var26 < var7.size(); var26++) {
+			Object[] var27 = (Object[]) var7.get(var26);
+			int var28 = ((Integer) var27[1]).intValue();
+			String var29 = (String) var27[2];
+			int var31 = ((Integer) var27[4]).intValue();
+			int var32 = ((Integer) var27[5]).intValue();
+			int var36 = ((Integer) var27[6]).intValue();
+			int var37 = ((Integer) var27[7]).intValue();
+			String var33 = (String) var27[3] + ", " + var36 + "x" + var37;
+			int[] var34 = this.projectTileBox(var31, var32, var36, var37, 0);
+			arg0.add(new EntityInfo(EntityInfo.KIND_LOC, var28, var29, var33,
+				var31 + this.sceneBaseTileX, var32 + this.sceneBaseTileZ, this.currentLevel,
+				-1, -1, var31, var32,
+				var34 == null ? -1 : var34[0], var34 == null ? -1 : var34[1],
+				var34 == null ? 0 : var34[2], var34 == null ? 0 : var34[3],
+				var34 == null ? 0 : var34[4], var34 == null ? 0 : var34[5],
+				var34 != null, -1, -1, null));
+		}
+	}
+
+	/**
+	 * Screen bounds of a loc's column: its footprint at ground level and at
+	 * {@code height}. Fills out as {minX, minY, maxX, maxY}.
+	 */
+	private boolean projectColumn(int arg0, int arg1, int arg2, int arg3, int arg4,
+			int arg5, int[] arg6) {
+		// widen the footprint by the layer's slack so overhanging canopy counts,
+		// clamped to the scene or the projection rejects the out-of-range corner
+		int var8 = arg0 - arg5;
+		int var9 = arg1 - arg5;
+		int var10 = arg2 + arg5 * 2;
+		int var11 = arg3 + arg5 * 2;
+		if (var8 < 0) {
+			var10 += var8;
+			var8 = 0;
+		}
+		if (var9 < 0) {
+			var11 += var9;
+			var9 = 0;
+		}
+		if (var8 + var10 > 103) {
+			var10 = 103 - var8;
+		}
+		if (var9 + var11 > 103) {
+			var11 = 103 - var9;
+		}
+		if (var10 < 1 || var11 < 1) {
+			return false;
+		}
+
+		int[] var7 = this.projectTileBox(var8, var9, var10, var11, 0);
+		if (var7 == null) {
+			return false;
+		}
+		int[] var12 = this.projectTileBox(var8, var9, var10, var11, arg4);
+		if (var12 == null) {
+			return false;
+		}
+		// union of the footprint at ground level and at full height
+		int var16 = var7[2] < var12[2] ? var7[2] : var12[2];
+		int var17 = var7[3] < var12[3] ? var7[3] : var12[3];
+		int var18 = var7[2] + var7[4] > var12[2] + var12[4] ? var7[2] + var7[4] : var12[2] + var12[4];
+		int var19 = var7[3] + var7[5] > var12[3] + var12[5] ? var7[3] + var7[5] : var12[3] + var12[5];
+		arg6[0] = var16;
+		arg6[1] = var17;
+		arg6[2] = var18;
+		arg6[3] = var19;
+		return true;
+	}
+
+	private void addGroundItemsAt(ArrayList arg0, int arg1, int arg2) {
+		if (this.levelObjStacks == null) {
+			return;
+		}
+		LinkList var4 = this.levelObjStacks[this.currentLevel][arg1][arg2];
+		if (var4 == null) {
+			return;
+		}
+		// one projection for the tile: every stack on it shares a position
+		int[] var5 = this.projectTileBox(arg1, arg2, 1, 1, 0);
+		for (ObjStackEntity var6 = (ObjStackEntity) var4.head(); var6 != null;
+				var6 = (ObjStackEntity) var4.next(1)) {
+			ObjType var7 = ObjType.get(var6.index);
+			arg0.add(new EntityInfo(EntityInfo.KIND_GROUND_ITEM, var6.index,
+				var7 == null || var7.name == null ? "(unknown)" : var7.name,
+				"x" + var6.count,
+				arg1 + this.sceneBaseTileX, arg2 + this.sceneBaseTileZ, this.currentLevel,
+				-1, -1, arg1, arg2,
+				var5 == null ? -1 : var5[0], var5 == null ? -1 : var5[1],
+				var5 == null ? 0 : var5[2], var5 == null ? 0 : var5[3],
+				var5 == null ? 0 : var5[4], var5 == null ? 0 : var5[5],
+				var5 != null, -1, -1, null));
+		}
+	}
+
+	// ---- FrameSource: raw viewport pixels for the vision layer ----
+
+	/** Where areaViewport is blitted onto the canvas. */
+	private static final int VIEWPORT_X = 8;
+	private static final int VIEWPORT_Y = 11;
+
+	/**
+	 * Copies the 3D viewport's raster.
+	 * <p>
+	 * areaViewport is the one region the client keeps as a single buffer, so the
+	 * vision layer can read exactly what was rendered instead of photographing the
+	 * screen. Copied rather than shared because the renderer overwrites this array
+	 * every frame.
+	 */
+	public Frame captureViewport() {
+		PixMap var1 = this.areaViewport;
+		if (var1 == null || var1.pixels == null) {
+			return null;
+		}
+		int[] var2 = new int[var1.pixels.length];
+		System.arraycopy(var1.pixels, 0, var2, 0, var2.length);
+		return new Frame(var2, var1.width, var1.height, VIEWPORT_X, VIEWPORT_Y, System.currentTimeMillis());
+	}
+
+	// ---- end Bwana ----------------------------------------------------
+
 	public static final void main(String[] arg0) {
 		try {
 			System.out.println("RS2 user client - release #" + 225);
@@ -11074,12 +13136,602 @@ public class client extends GameShell {
 				}
 				signlink.startpriv(InetAddress.getLocalHost());
 				client var1 = new client();
+				Bwana.start(var1, var1); // Bwana
 				var1.initApplication(532, 789, 0);
 			} else {
 				System.out.println("Usage: node-id, port-offset, [lowmem/highmem], [free/members]");
 			}
 		} catch (Exception var2) {
 		}
+	}
+
+	// ---- Bwana: action layer ----
+
+	private static final EntityAction[] NO_ACTIONS = new EntityAction[0];
+
+	/**
+	 * Menu opcodes for a loc's five ops, copied from {@code handleViewportOptions}.
+	 * <p>
+	 * Read off the client's own menu builder rather than guessed, so an action
+	 * executes through the exact path a right-click would have taken.
+	 */
+	private static final int[] LOC_OPCODES = new int[] { 285, 504, 364, 581, 1501 };
+
+	/** The same for an NPC's five ops, from {@code addNpcOptions}. */
+	private static final int[] NPC_OPCODES = new int[] { 728, 542, 6, 963, 245 };
+
+	/** The same for a ground item's five ops, from the ground-item menu builder. */
+	private static final int[] OBJ_OPCODES = new int[] { 224, 993, 99, 746, 877 };
+
+	/**
+	 * Scratch slot for an action being executed programmatically.
+	 * <p>
+	 * The menu arrays hold 500 entries and the client's own builders stop adding at
+	 * 400, so the top of the array is dead space no right-click can ever reach. That
+	 * makes it safe to stage one entry there and hand its index to
+	 * {@code useMenuOption}, which is the whole point: the interaction is dispatched
+	 * by the client's own handler, not by a reimplementation of it.
+	 */
+	private static final int BWANA_MENU_SLOT = 499;
+
+	/**
+	 * The interactions the client itself would offer on this entity.
+	 * <p>
+	 * Everything here is read out of the cache definitions the right-click menu is
+	 * built from. Nothing is inferred from the name, so an object exposes "Chop
+	 * down" because its {@code LocType} says so, not because it is called a tree.
+	 */
+	public EntityAction[] getActions(EntityInfo arg0) {
+		if (!this.ingame || arg0 == null) {
+			return NO_ACTIONS;
+		}
+		ArrayList var2 = new ArrayList();
+		if (arg0.kind == EntityInfo.KIND_LOC) {
+			LocType var3 = LocType.get(arg0.id);
+			if (var3 == null || var3.name == null) {
+				return NO_ACTIONS;
+			}
+			int var4 = this.locBitsetAt(arg0.tileX, arg0.tileZ, arg0.id);
+			if (var4 == 0) {
+				return NO_ACTIONS;
+			}
+			for (int var5 = 0; var5 < LOC_OPCODES.length; var5++) {
+				if (var3.op != null && var3.op[var5] != null) {
+					var2.add(new EntityAction(var3.op[var5], var5, LOC_OPCODES[var5], var4,
+						arg0.tileX, arg0.tileZ, arg0.handle, var3.name, false));
+				}
+			}
+			var2.add(new EntityAction("Examine", -1, 1175, var4, arg0.tileX, arg0.tileZ,
+				arg0.handle, var3.name, true));
+		} else if (arg0.kind == EntityInfo.KIND_NPC) {
+			NpcType var6 = NpcType.get(arg0.id);
+			if (var6 == null || var6.name == null || arg0.getSlot() < 0) {
+				return NO_ACTIONS;
+			}
+			for (int var7 = 0; var7 < NPC_OPCODES.length; var7++) {
+				if (var6.op != null && var6.op[var7] != null) {
+					var2.add(new EntityAction(var6.op[var7], var7, NPC_OPCODES[var7],
+						arg0.getSlot(), arg0.tileX, arg0.tileZ, arg0.handle,
+						var6.name, false));
+				}
+			}
+			var2.add(new EntityAction("Examine", -1, 1607, arg0.getSlot(), arg0.tileX,
+				arg0.tileZ, arg0.handle, var6.name, true));
+		} else if (arg0.kind == EntityInfo.KIND_GROUND_ITEM) {
+			ObjType var12 = ObjType.get(arg0.id);
+			if (var12 == null) {
+				return NO_ACTIONS;
+			}
+			for (int var13 = 0; var13 < OBJ_OPCODES.length; var13++) {
+				if (var12.op != null && var12.op[var13] != null) {
+					var2.add(new EntityAction(var12.op[var13], var13, OBJ_OPCODES[var13],
+						arg0.id, arg0.tileX, arg0.tileZ, arg0.handle,
+						var12.name == null ? "item" : var12.name, false));
+				}
+			}
+			// The client offers Take in slot three whenever the definition leaves it
+			// empty, which is the case for almost everything worth picking up.
+			if (var12.op == null || var12.op[2] == null) {
+				var2.add(new EntityAction("Take", 2, 99, arg0.id, arg0.tileX, arg0.tileZ,
+					arg0.handle, var12.name == null ? "item" : var12.name, false));
+			}
+		} else if (arg0.kind == EntityInfo.KIND_PLAYER) {
+			if (arg0.getSlot() < 0) {
+				return NO_ACTIONS;
+			}
+			// Players carry no op table; the client hard-codes their menu, so these two
+			// are transcribed from addPlayerOptions. The conditional entries there
+			// (Attack, Duel) depend on world state we would have to second-guess, so
+			// they are left out rather than offered and then silently ignored.
+			var2.add(new EntityAction("Follow", -1, 1544, arg0.getSlot(), arg0.tileX,
+				arg0.tileZ, arg0.handle, arg0.name, false));
+			var2.add(new EntityAction("Trade with", -1, 1373, arg0.getSlot(), arg0.tileX,
+				arg0.tileZ, arg0.handle, arg0.name, false));
+		}
+		return (EntityAction[]) var2.toArray(new EntityAction[var2.size()]);
+	}
+
+	/**
+	 * Perform the interaction through the client's own menu handler.
+	 * <p>
+	 * The identity checks below are the interesting part. Between choosing an action
+	 * and pressing execute the world moves: the tree gets felled, the goblin dies
+	 * and its index is reused by something else. Sending regardless would fire the
+	 * interaction at whatever now occupies that slot, so each kind is re-validated
+	 * against live client state first, and the caller is told why rather than being
+	 * left to infer it from silence.
+	 *
+	 * @return null once handed to {@code useMenuOption}, otherwise the reason it was not
+	 */
+	public String execute(EntityAction arg0) {
+		if (arg0 == null) {
+			return "no action given";
+		}
+		if (!this.ingame || this.localPlayer == null) {
+			return "not logged in";
+		}
+		// Re-find the entity by identity rather than trusting the parameters captured
+		// when the action was built. If it has moved -- walked to another tile, been
+		// shuffled to another slot -- those parameters are stale, and sending them
+		// would aim the interaction at wherever it used to be.
+		EntityInfo var2 = this.resolveHandle(arg0.entityHandle);
+		if (var2 == null) {
+			return arg0.entityName + " is gone (" + arg0.entityHandle.describe() + ")";
+		}
+
+		int var3 = arg0.paramA;
+		int var4 = arg0.paramB;
+		int var5 = arg0.paramC;
+		if (arg0.entityKind == EntityInfo.KIND_LOC) {
+			if (this.scene == null) {
+				return "scene not loaded";
+			}
+			// Re-derive from the entity we just resolved: the scene may have been
+			// rebuilt since, which moves every scene-local tile and invalidates the
+			// bitset that goes with it.
+			var4 = var2.tileX;
+			var5 = var2.tileZ;
+			var3 = this.locBitsetAt(var4, var5, var2.id);
+			if (var3 == 0 || this.scene.getInfo(this.currentLevel, var4, var5, var3) == -1) {
+				return arg0.entityName + " is no longer at tile " + var4 + ", " + var5;
+			}
+		} else if (arg0.entityKind == EntityInfo.KIND_GROUND_ITEM) {
+			var3 = arg0.paramA;
+			var4 = var2.tileX;
+			var5 = var2.tileZ;
+		} else if (arg0.entityKind == EntityInfo.KIND_NPC
+				|| arg0.entityKind == EntityInfo.KIND_PLAYER) {
+			// The slot is the client's business and may have changed under us; the
+			// handle survived that, so take the current one rather than the old one.
+			var3 = var2.getSlot();
+			var4 = var2.tileX;
+			var5 = var2.tileZ;
+			if (var3 < 0) {
+				return arg0.entityName + " has no slot to address";
+			}
+		} else {
+			return arg0.entityName + " is a " + arg0.entityKind + " and cannot be interacted with";
+		}
+
+		// Put the click point on the target so the game's own yellow cross lands
+		// there. Cosmetic, but it is what a real click would have set, and it makes
+		// "did anything fire" answerable by looking at the screen.
+		if (var2.screenX >= 0 && var2.screenY >= 0) {
+			this.mouseClickX = var2.screenX + 8;
+			this.mouseClickY = var2.screenY + 11;
+		}
+
+		this.menuOption[BWANA_MENU_SLOT] = arg0.name;
+		this.menuAction[BWANA_MENU_SLOT] = arg0.menuAction;
+		this.menuParamA[BWANA_MENU_SLOT] = var3;
+		this.menuParamB[BWANA_MENU_SLOT] = var4;
+		this.menuParamC[BWANA_MENU_SLOT] = var5;
+		this.useMenuOption(6412, BWANA_MENU_SLOT);
+		return null;
+	}
+
+	/** A scan taking longer than this is worth complaining about; the loop runs at 50 Hz. */
+	private static final int SLOW_SCAN_MS = 15;
+
+	/**
+	 * How far to stay clear of the scene border when aiming a long walk.
+	 * <p>
+	 * The outermost tiles are where the loaded scene stops; terrain there is often
+	 * absent and pathing into it fails. Aiming a little inside gives the pathfinder
+	 * something real to walk to, and by the time the player arrives the scene has
+	 * scrolled and the next hop starts from a fresh interior.
+	 */
+	private static final int EDGE_MARGIN = 10;
+
+	/** Loc name by id, remembered so a scan does not re-decode the same type repeatedly. */
+	private String[] locNameMemo;
+
+	/** Packed footprint: 0 means unknown, else 0x10000 | width &lt;&lt; 8 | length. */
+	private int[] locSizeMemo;
+
+	/**
+	 * Remember a loc type's name and footprint.
+	 * <p>
+	 * {@code LocType.get} keeps only ten entries and re-decodes on every miss, so a
+	 * sweep across a city decodes the same few hundred types over and over — the
+	 * single most expensive thing a scan does, and all of it on the game thread. The
+	 * values needed here never change for a given id, so they are worth keeping.
+	 * <p>
+	 * A cache repack would invalidate this, but that reloads the client anyway.
+	 */
+	private void memoiseLoc(int arg0) {
+		if (this.locSizeMemo == null) {
+			this.locNameMemo = new String[0x8000];
+			this.locSizeMemo = new int[0x8000];
+		}
+		if (this.locSizeMemo[arg0] != 0) {
+			return;
+		}
+		LocType var2 = LocType.get(arg0);
+		if (var2 == null) {
+			this.locSizeMemo[arg0] = 0x10000 | 0x101;
+			return;
+		}
+		this.locNameMemo[arg0] = var2.name;
+		this.locSizeMemo[arg0] = 0x10000 | (var2.width & 0xFF) << 8 | (var2.length & 0xFF);
+	}
+
+	// ---- Bwana: widget layer ----
+
+	/** Menu opcodes for an item's five definition ops, from the inventory menu builder. */
+	private static final int[] ITEM_OPCODES = new int[] { 405, 38, 422, 478, 347 };
+
+	/** The same for a component's own options — how a bank offers "Deposit-1". */
+	private static final int[] IOPS_OPCODES = new int[] { 602, 596, 22, 892, 415 };
+
+	private static final bwana.action.ItemAction[] NO_ITEM_ACTIONS =
+		new bwana.action.ItemAction[0];
+
+	public int getViewportInterfaceId() {
+		return this.ingame && this.viewportInterfaceId > 0
+			? this.viewportInterfaceId : bwana.widget.WidgetSource.NONE;
+	}
+
+	public int getChatInterfaceId() {
+		return this.ingame && this.chatInterfaceId > 0
+			? this.chatInterfaceId : bwana.widget.WidgetSource.NONE;
+	}
+
+	public boolean isAnyInterfaceOpen() {
+		return this.getViewportInterfaceId() != bwana.widget.WidgetSource.NONE
+			|| this.getChatInterfaceId() != bwana.widget.WidgetSource.NONE;
+	}
+
+	public int[] getContainerIds(int arg0) {
+		Component var2 = this.componentAt(arg0);
+		if (var2 == null || var2.invSlotObjId == null) {
+			return NO_SLOTS;
+		}
+		int[] var3 = new int[var2.invSlotObjId.length];
+		for (int var4 = 0; var4 < var3.length; var4++) {
+			// stored as id+1 so that 0 can mean empty
+			var3[var4] = var2.invSlotObjId[var4] - 1;
+		}
+		return var3;
+	}
+
+	public int[] getContainerCounts(int arg0) {
+		Component var2 = this.componentAt(arg0);
+		if (var2 == null || var2.invSlotObjCount == null) {
+			return NO_SLOTS;
+		}
+		int[] var3 = new int[var2.invSlotObjCount.length];
+		System.arraycopy(var2.invSlotObjCount, 0, var3, 0, var3.length);
+		return var3;
+	}
+
+	public String getWidgetText(int arg0) {
+		Component var2 = this.componentAt(arg0);
+		return var2 == null ? null : var2.text;
+	}
+
+	public boolean isWidgetHidden(int arg0) {
+		Component var2 = this.componentAt(arg0);
+		return var2 == null || var2.hide;
+	}
+
+	public int[] getContainersUnder(int arg0) {
+		if (arg0 < 0 || Component.instances == null) {
+			return NO_SLOTS;
+		}
+		ArrayList var2 = new ArrayList();
+		for (int var3 = 0; var3 < Component.instances.length; var3++) {
+			Component var4 = Component.instances[var3];
+			if (var4 != null && var4.layer == arg0 && var4.invSlotObjId != null) {
+				var2.add(Integer.valueOf(var4.id));
+			}
+		}
+		int[] var5 = new int[var2.size()];
+		for (int var6 = 0; var6 < var5.length; var6++) {
+			var5[var6] = ((Integer) var2.get(var6)).intValue();
+		}
+		return var5;
+	}
+
+	public int[] getContainersWithOption(String arg0) {
+		if (arg0 == null || Component.instances == null) {
+			return NO_SLOTS;
+		}
+		String var2 = arg0.toLowerCase();
+		ArrayList var3 = new ArrayList();
+		for (int var4 = 0; var4 < Component.instances.length; var4++) {
+			Component var5 = Component.instances[var4];
+			if (var5 == null || var5.invSlotObjId == null || var5.iops == null) {
+				continue;
+			}
+			for (int var6 = 0; var6 < var5.iops.length; var6++) {
+				if (var5.iops[var6] != null
+						&& var5.iops[var6].toLowerCase().indexOf(var2) >= 0) {
+					var3.add(Integer.valueOf(var5.id));
+					break;
+				}
+			}
+		}
+		int[] var7 = new int[var3.size()];
+		for (int var8 = 0; var8 < var7.length; var8++) {
+			var7[var8] = ((Integer) var3.get(var8)).intValue();
+		}
+		return var7;
+	}
+
+	private Component componentAt(int arg0) {
+		if (arg0 < 0 || Component.instances == null || arg0 >= Component.instances.length) {
+			return null;
+		}
+		return Component.instances[arg0];
+	}
+
+	/**
+	 * The interactions on an item, from both places the client takes them.
+	 * <p>
+	 * The item's own {@code iop} table gives verbs it carries everywhere — Bury,
+	 * Eat, Drop. The component's {@code iops} give verbs that exist only while that
+	 * interface is open, which is exactly how depositing appears once a bank is up.
+	 * Reading both is what makes one mechanism cover burying and banking.
+	 */
+	public bwana.action.ItemAction[] getItemActions(int arg0, int arg1) {
+		if (!this.ingame) {
+			return NO_ITEM_ACTIONS;
+		}
+		int var3 = arg0 < 0 ? this.getContainerComponentId(INVENTORY_TAB) : arg0;
+		Component var4 = this.componentAt(var3);
+		if (var4 == null || var4.invSlotObjId == null
+				|| arg1 < 0 || arg1 >= var4.invSlotObjId.length) {
+			return NO_ITEM_ACTIONS;
+		}
+		int var5 = var4.invSlotObjId[arg1] - 1;
+		if (var5 < 0) {
+			return NO_ITEM_ACTIONS;
+		}
+		ObjType var6 = ObjType.get(var5);
+		if (var6 == null) {
+			return NO_ITEM_ACTIONS;
+		}
+		ArrayList var7 = new ArrayList();
+		if (var4.interactable && var6.iop != null) {
+			for (int var8 = 0; var8 < ITEM_OPCODES.length; var8++) {
+				if (var6.iop[var8] != null) {
+					var7.add(new bwana.action.ItemAction(var6.iop[var8], ITEM_OPCODES[var8],
+						var5, arg1, var3, false));
+				}
+			}
+		}
+		// The client offers Drop in slot five whenever the definition leaves it empty.
+		if (var4.interactable && (var6.iop == null || var6.iop[4] == null)) {
+			var7.add(new bwana.action.ItemAction("Drop", 347, var5, arg1, var3, false));
+		}
+		if (var4.iops != null) {
+			for (int var9 = 0; var9 < IOPS_OPCODES.length; var9++) {
+				if (var4.iops[var9] != null) {
+					var7.add(new bwana.action.ItemAction(var4.iops[var9], IOPS_OPCODES[var9],
+						var5, arg1, var3, true));
+				}
+			}
+		}
+		return (bwana.action.ItemAction[]) var7.toArray(
+			new bwana.action.ItemAction[var7.size()]);
+	}
+
+	public String executeItem(bwana.action.ItemAction arg0) {
+		if (arg0 == null) {
+			return "no action given";
+		}
+		if (!this.ingame) {
+			return "not logged in";
+		}
+		Component var2 = this.componentAt(arg0.componentId);
+		if (var2 == null || var2.invSlotObjId == null
+				|| arg0.slot < 0 || arg0.slot >= var2.invSlotObjId.length) {
+			return "container " + arg0.componentId + " is gone";
+		}
+		// Containers reshuffle whenever anything is added or removed, so the slot is
+		// re-checked against the item it was built for. Acting on a stale slot is how
+		// a script buries its axe.
+		if (var2.invSlotObjId[arg0.slot] - 1 != arg0.itemId) {
+			return "slot " + arg0.slot + " now holds item "
+				+ (var2.invSlotObjId[arg0.slot] - 1) + ", not " + arg0.itemId;
+		}
+		this.menuOption[BWANA_MENU_SLOT] = arg0.name;
+		this.menuAction[BWANA_MENU_SLOT] = arg0.menuAction;
+		this.menuParamA[BWANA_MENU_SLOT] = arg0.itemId;
+		this.menuParamB[BWANA_MENU_SLOT] = arg0.slot;
+		this.menuParamC[BWANA_MENU_SLOT] = arg0.componentId;
+		this.useMenuOption(6412, BWANA_MENU_SLOT);
+		return null;
+	}
+
+	/**
+	 * Copy the loaded scene's movement flags for the navigation graph.
+	 * <p>
+	 * A copy: {@code levelCollisionMap} is rewritten in place whenever the scene
+	 * reloads, and the mapper reads it on its own schedule.
+	 */
+	public bwana.nav.SceneCollision captureCollision() {
+		if (!this.ingame || this.levelCollisionMap == null
+				|| this.levelCollisionMap[this.currentLevel] == null) {
+			return null;
+		}
+		int[][] var1 = this.levelCollisionMap[this.currentLevel].flags;
+		if (var1 == null || var1.length < bwana.nav.SceneCollision.SIZE) {
+			return null;
+		}
+		int[] var2 = new int[bwana.nav.SceneCollision.SIZE * bwana.nav.SceneCollision.SIZE];
+		for (int var3 = 0; var3 < bwana.nav.SceneCollision.SIZE; var3++) {
+			for (int var4 = 0; var4 < bwana.nav.SceneCollision.SIZE; var4++) {
+				var2[var3 * bwana.nav.SceneCollision.SIZE + var4] = var1[var4][var3];
+			}
+		}
+		return new bwana.nav.SceneCollision(this.sceneBaseTileX, this.sceneBaseTileZ,
+			this.currentLevel, var2);
+	}
+
+	/**
+	 * Whether a step in a direction is legal, using the pathfinder's own masks.
+	 * <p>
+	 * Copied from the cardinal cases inside {@code tryMove} rather than reasoned
+	 * about afresh. If the graph disagreed with the client about a legal step it
+	 * would plan routes the client then refuses to walk, and the graph would be
+	 * wrong in a way that only shows up as mysterious stalling.
+	 */
+	public boolean canEnter(int arg0, int arg1) {
+		if (arg1 == 0) {
+			return (arg0 & 0x280120) == 0;
+		}
+		if (arg1 == 1) {
+			return (arg0 & 0x280180) == 0;
+		}
+		if (arg1 == 2) {
+			return (arg0 & 0x280102) == 0;
+		}
+		return (arg0 & 0x280108) == 0;
+	}
+
+	/**
+	 * Walk toward a world tile, clamped to what the client can currently reach.
+	 * <p>
+	 * Uses the client's own pathfinder and its viewport movement packet,
+	 * {@code arg6 == 0}. Nothing here reimplements pathing; it asks for it.
+	 * <p>
+	 * <b>Not the minimap variant.</b> {@code arg6 == 1} declares a packet length of
+	 * {@code 2 * steps + 3 + 14} but {@code tryMove} only writes {@code 2 * steps + 3};
+	 * the trailing fourteen bytes are anti-cheat fields the <i>caller</i> appends —
+	 * see {@code handleMinimapInput}. Choosing that variant without writing them
+	 * left every walk command fourteen bytes short of its own declared length, so
+	 * the server read the head of the next packet as the tail of this one and the
+	 * stream desynchronised. The client noticed, dropped the connection and ran
+	 * {@code tryReconnect}, which blocks the game loop for the length of a fresh
+	 * login: the "Connection lost" overlay and the several-hundred-millisecond
+	 * freeze, once per walk command.
+	 * <p>
+	 * The viewport variant's declared length matches what it writes exactly, so it
+	 * is self-contained and needs no trailer. Both share the same pathfinder and the
+	 * same route length cap, so nothing is given up by using it.
+	 * <p>
+	 * The clamp is why the caller never has to know a scene is 104 tiles square:
+	 * a destination beyond the loaded area becomes the nearest edge tile along the
+	 * way, and each call gets a little closer as the scene reloads.
+	 */
+	public String walkTo(int arg0, int arg1) {
+		if (!this.ingame || this.localPlayer == null || this.scene == null) {
+			return "not logged in";
+		}
+		int var3 = this.localPlayer.pathTileX[0];
+		int var4 = this.localPlayer.pathTileZ[0];
+		int var5 = arg0 - this.sceneBaseTileX - var3;
+		int var6 = arg1 - this.sceneBaseTileZ - var4;
+		int var7 = Math.abs(var5) > Math.abs(var6) ? Math.abs(var5) : Math.abs(var6);
+		if (var7 == 0) {
+			return null;
+		}
+
+		// Aim along the line to the destination, stopping short of the scene border.
+		// Clamping each axis on its own would send a target beyond two edges to the
+		// far corner, which is unloaded void with no route to it.
+		int var8 = var3 + var5;
+		int var9 = var4 + var6;
+		if (var8 < EDGE_MARGIN) {
+			var8 = EDGE_MARGIN;
+		} else if (var8 > 103 - EDGE_MARGIN) {
+			var8 = 103 - EDGE_MARGIN;
+		}
+		if (var9 < EDGE_MARGIN) {
+			var9 = EDGE_MARGIN;
+		} else if (var9 > 103 - EDGE_MARGIN) {
+			var9 = 103 - EDGE_MARGIN;
+		}
+		if (var8 == var3 && var9 == var4) {
+			return null;
+		}
+		if (this.tryMove(var3, 0, true, var8, var4, 0, 0, 0, var9, 0, 0, 0)) {
+			return null;
+		}
+
+		// The aim point is unreachable — a wall, a river, a building. The client's
+		// own fallback only looks one tile around the target, which is no help when
+		// the whole approach is blocked.
+		//
+		// But the search that just failed left behind exactly what is needed: the
+		// BFS fills bfsCost for every tile it *can* reach from here, and only
+		// returns false once that is exhausted. So instead of guessing at shorter
+		// hops along the same blocked bearing — which was the previous attempt, and
+		// which stalled against the Varrock wall because every retry clamped back
+		// onto the same column — ask the map which reachable tile lies nearest the
+		// one we wanted, and go there. Obstacles are then routed around as a
+		// side-effect of the pathfinder's own work.
+		int var10 = -1;
+		int var11 = -1;
+		int var12 = Math.abs(var3 - var8) > Math.abs(var4 - var9)
+			? Math.abs(var3 - var8) : Math.abs(var4 - var9);
+		for (int var13 = 0; var13 < 104; var13++) {
+			for (int var14 = 0; var14 < 104; var14++) {
+				if (this.bfsCost[var13][var14] >= 99999999) {
+					continue;
+				}
+				int var15 = Math.abs(var13 - var8) > Math.abs(var14 - var9)
+					? Math.abs(var13 - var8) : Math.abs(var14 - var9);
+				if (var15 < var12) {
+					var12 = var15;
+					var10 = var13;
+					var11 = var14;
+				}
+			}
+		}
+		if (var10 >= 0 && this.tryMove(var3, 0, true, var10, var4, 0, 0, 0, var11, 0, 0, 0)) {
+			return null;
+		}
+		return "nothing reachable toward " + arg0 + ", " + arg1 + " from scene tile "
+			+ var3 + ", " + var4;
+	}
+
+	/**
+	 * The scene's stored bitset for a loc, or 0 if it is not there.
+	 * <p>
+	 * Not reconstructed from tile and id: {@code World3D.getInfo} compares bitsets
+	 * for exact equality, so a value assembled by hand would be rejected even when
+	 * every field in it was right. Asking the scene for the value it holds is the
+	 * only version guaranteed to match, and it doubles as a liveness check.
+	 */
+	private int locBitsetAt(int arg0, int arg1, int arg2) {
+		if (this.scene == null || arg0 < 0 || arg0 > 103 || arg1 < 0 || arg1 > 103) {
+			return 0;
+		}
+		int[] var4 = new int[] {
+			this.scene.getWallBitset(this.currentLevel, arg0, arg1),
+			this.scene.getWallDecorationBitset(this.currentLevel, arg1, 3, arg0),
+			this.scene.getLocBitset(this.currentLevel, arg0, arg1),
+			this.scene.getGroundDecorationBitset(this.currentLevel, arg0, arg1)
+		};
+		for (int var5 = 0; var5 < var4.length; var5++) {
+			if (var4[var5] != 0 && (var4[var5] >> 14 & 0x7FFF) == arg2) {
+				return var4[var5];
+			}
+		}
+		return 0;
 	}
 
 	static {

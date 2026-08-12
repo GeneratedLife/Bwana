@@ -1,8 +1,8 @@
-/.gradle/
-/.idea/
-
 build/
+.gradle/
 *.class
-
-hs_err_pid*.log
-.DS_Store
+*.jar
+*.log
+.idea/
+.vscode/
+*.iml
