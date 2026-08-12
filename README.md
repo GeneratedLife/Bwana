@@ -49,8 +49,22 @@ Needs a portable JDK 8 and a Lost City server. The server is a separate project 
 is not vendored here; clone it alongside and start it first.
 
 ```
-build.cmd     # gradle build
-play.cmd      # starts the server if needed, then the client
+build.cmd       # gradle build, JDKs come from ~/.gradle/gradle.properties
+build-home.cmd  # gradle build, JDKs found on disk
+play.cmd        # starts the server if needed, then the client
+```
+
+`build.cmd` relies on `~/.gradle/gradle.properties` pinning `org.gradle.java.home`
+and listing both JDKs for toolchain resolution. That file is outside the repo, so
+a fresh clone on another machine has neither setting and the build stops at *No
+matching toolchains found for Java 8*. `build-home.cmd` needs no setup: it finds a
+JDK 8 for the toolchain and a JDK to run Gradle, then passes both on the command
+line. Override the search when it guesses wrong — `BWANA_JDK8` is read by
+`play.cmd` too:
+
+```
+set BWANA_JDK8=C:\path\to\jdk8
+set BWANA_JDK_DAEMON=C:\path\to\jdk
 ```
 
 The client derives both ports from one offset: HTTP `80 + offset`, game

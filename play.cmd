@@ -14,10 +14,23 @@ rem      "Error loading - will retry in NN secs"
 rem ---------------------------------------------------------------------------
 
 set "ROOT=%~dp0"
-set "JDK8=%LOCALAPPDATA%\jdks\jdk8u502-b07"
 set "BUN=%USERPROFILE%\.bun\bin\bun.exe"
-set "JAR=%ROOT%Client-Java\build\libs\rs2client.jar"
 set "ENGINE=%ROOT%Server\engine"
+
+rem The two layouts build-home.cmd also handles: a plain clone is itself the
+rem gradle project, while the work PC keeps the client in a Client-Java folder
+rem with the scripts a level above it.
+set "CLIENT=%ROOT%"
+if exist "%ROOT%Client-Java\build.gradle" set "CLIENT=%ROOT%Client-Java\"
+set "JAR=%CLIENT%build\libs\rs2client.jar"
+
+rem BWANA_JDK8 wins, so a machine whose portable JDK 8 lives somewhere else
+rem needs no edit here. Same variable build-home.cmd reads.
+if defined BWANA_JDK8 (
+  set "JDK8=%BWANA_JDK8%"
+) else (
+  set "JDK8=%LOCALAPPDATA%\jdks\jdk8u502-b07"
+)
 
 rem The client derives both ports from one offset: http = 80 + offset,
 rem game = 43594 + offset. Port 80 is taken on this machine, hence 2000.
@@ -39,6 +52,8 @@ if not exist "%JAR%" (
 if not exist "%JDK8%\bin\java.exe" (
   echo.
   echo   JDK 8 not found at %JDK8%
+  echo.
+  echo   Point at the one you have:  set BWANA_JDK8=C:\path\to\jdk8
   echo.
   pause
   exit /b 1
@@ -107,7 +122,7 @@ rem   -Xms = -Xmx   fixed heap, so no pause is spent growing it
 rem   UseG1GC       incremental collector that works to a pause target
 rem   MaxGCPauseMillis  40ms, i.e. under two game ticks
 set "JVM=-Xms1536m -Xmx1536m -XX:+UseG1GC -XX:MaxGCPauseMillis=40"
-pushd "%ROOT%Client-Java"
+pushd "%CLIENT%"
 start "Bwana client" /MIN "%JDK8%\bin\java.exe" %JVM% -jar "%JAR%" %ARGS%
 popd
 exit /b 0
