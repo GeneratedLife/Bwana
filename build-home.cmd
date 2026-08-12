@@ -110,6 +110,15 @@ set "JDK8="
 set "DAEMON="
 set "MODERN="
 set "MODERNVER=0"
+set "TOONEW="
+
+rem  The newest JDK on the machine is the wrong choice for running Gradle: each
+rem  Gradle release only knows class file versions up to the Java it shipped
+rem  against. gradle-wrapper.properties pins 8.11.1, which is from November 2024
+rem  and tops out at Java 23; handing it Java 24 fails while parsing build.gradle
+rem  with "Unsupported class file major version 68", not with anything that names
+rem  the JDK. Cap the search, and raise this if the wrapper is ever bumped.
+set "MAXDAEMON=23"
 
 if defined BWANA_JDK8 (
   if exist "%BWANA_JDK8%\bin\javac.exe" (
@@ -169,14 +178,19 @@ if not defined JDK8 (
   exit /b 1
 )
 
-rem  Gradle 8.11 runs on 8 or newer, so the JDK 8 is a usable last resort for
-rem  the daemon. A modern JDK is preferred only because it is faster.
+rem  Gradle 8.11 runs on 8 or newer, so the JDK 8 is a usable last resort for the
+rem  daemon. A JDK in range is preferred only because it is faster.
 if not defined DAEMON (
   if defined MODERN (
     set "DAEMON=!MODERN!"
   ) else (
     set "DAEMON=!JDK8!"
   )
+)
+
+if defined TOONEW (
+  echo   Skipped         : !TOONEW!
+  echo                     too new to run Gradle 8.11.1, which supports Java %MAXDAEMON%
 )
 
 rem  Hand Gradle every JDK found, not just the toolchain one, so it can still
@@ -212,8 +226,9 @@ exit /b 0
 rem --- subroutines -------------------------------------------------------------
 
 :consider
-rem  %1 = a candidate JDK directory. Records it if it is the first JDK 8 seen,
-rem  or the newest JDK 11+ seen.
+rem  %1 = a candidate JDK directory. Records it if it is the first JDK 8 seen, or
+rem  the newest JDK between 11 and MAXDAEMON. Anything newer than MAXDAEMON is
+rem  remembered only so the run can say why it was passed over.
 call :probe "%~1"
 if not defined VER exit /b
 if "%VER%"=="8" (
@@ -221,9 +236,13 @@ if "%VER%"=="8" (
   exit /b
 )
 if %VER% geq 11 (
-  if %VER% gtr %MODERNVER% (
-    set "MODERN=%~1"
-    set "MODERNVER=%VER%"
+  if %VER% leq %MAXDAEMON% (
+    if %VER% gtr %MODERNVER% (
+      set "MODERN=%~1"
+      set "MODERNVER=%VER%"
+    )
+  ) else (
+    set "TOONEW=%~1 - Java %VER%"
   )
 )
 exit /b

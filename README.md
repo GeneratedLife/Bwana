@@ -59,8 +59,10 @@ and listing both JDKs for toolchain resolution. That file is outside the repo, s
 a fresh clone on another machine has neither setting and the build stops at *No
 matching toolchains found for Java 8*. `build-home.cmd` needs no setup: it finds a
 JDK 8 for the toolchain and a JDK to run Gradle, then passes both on the command
-line. Override the search when it guesses wrong — `BWANA_JDK8` is read by
-`play.cmd` too:
+line. It will not pick a JDK newer than 23 to run Gradle, because 8.11.1 predates
+Java 24 and fails on it with *Unsupported class file major version 68* while
+parsing `build.gradle`. Override the search when it guesses wrong — `BWANA_JDK8`
+is read by `play.cmd` too:
 
 ```
 set BWANA_JDK8=C:\path\to\jdk8
