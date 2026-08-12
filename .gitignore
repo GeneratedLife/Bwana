@@ -11,3 +11,6 @@ build/
 .idea/
 .vscode/
 *.iml
+# The Lost City server, if someone puts it inside the checkout rather than
+# beside it. setup-server.cmd defaults to beside; play.cmd accepts either.
+/Server/
