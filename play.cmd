@@ -23,33 +23,19 @@ set "ROOT=%~dp0"
 set "BUN=%USERPROFILE%\.bun\bin\bun.exe"
 set "PROBE=%TEMP%\bwana-jdk-probe.txt"
 
-rem The two layouts build-home.cmd also handles: a plain clone is itself the
-rem gradle project, while the work PC keeps the client in a Client-Java folder
-rem with the scripts a level above it.
-set "CLIENT=%ROOT%"
-if exist "%ROOT%Client-Java\build.gradle" set "CLIENT=%ROOT%Client-Java\"
+rem --- which revision -----------------------------------------------------------
 
-rem  Since the core/client split the jar is built by the client-225 module and
-rem  lands under it. The old path is still checked so a checkout from before the
-rem  split, or a build/ left over from one, still launches.
-set "JAR=%CLIENT%client-225\build\libs\rs2client.jar"
-if not exist "%JAR%" if exist "%CLIENT%build\libs\rs2client.jar" set "JAR=%CLIENT%build\libs\rs2client.jar"
-
-rem --- where is the server ------------------------------------------------------
-
-rem  The server is a separate project and is not vendored here. Which side of the
-rem  client it sits on depends on the same layout split as above: with the work
-rem  PC's Root\Client-Java it is a sibling at Root\Server, but in a plain clone
-rem  ROOT is the client repo itself, so a Server folder there would be nested
-rem  inside the checkout. Accept either, and let BWANA_SERVER override.
+rem  REV, OFFSET, WEBPORT, GAMEPORT, CLIENTARGS, JAR and SERVER all come from
+rem  revision.cmd, so the ports this waits on and the ports setup-server.cmd wrote
+rem  into the engine's .env cannot drift apart.
+call "%ROOT%revision.cmd" %1
+if errorlevel 1 (
+  pause
+  exit /b 1
+)
 
 set "ENGINE="
-if defined BWANA_SERVER (
-  if exist "%BWANA_SERVER%\engine\src\app.ts" set "ENGINE=%BWANA_SERVER%\engine"
-  if exist "%BWANA_SERVER%\src\app.ts"        set "ENGINE=%BWANA_SERVER%"
-)
-if not defined ENGINE if exist "%ROOT%Server\engine\src\app.ts"   set "ENGINE=%ROOT%Server\engine"
-if not defined ENGINE if exist "%ROOT%..\Server\engine\src\app.ts" set "ENGINE=%ROOT%..\Server\engine"
+if defined SERVER set "ENGINE=%SERVER%\engine"
 
 rem --- which JDK 8 --------------------------------------------------------------
 
@@ -72,12 +58,6 @@ if not defined JDK8 (
   for /d %%D in ("%ProgramFiles%\Zulu\*")             do call :consider8 "%%~fD"
 )
 if exist "%PROBE%" del "%PROBE%" >nul 2>&1
-
-rem The client derives both ports from one offset: http = 80 + offset,
-rem game = 43594 + offset. Port 80 is taken on this machine, hence 2000.
-set "ARGS=10 2000 highmem members"
-set "WEBPORT=2080"
-set "GAMEPORT=45594"
 
 if not exist "%JAR%" (
   echo.
@@ -116,14 +96,17 @@ if not errorlevel 1 (
 
 if not defined ENGINE (
   echo.
-  echo   The Lost City server is not here. It is a separate project and is not
-  echo   vendored in this repo. Looked for engine\src\app.ts under:
+  echo   No rev %REV% server here. It is a separate project and is not vendored
+  echo   in this repo. Looked for engine\src\app.ts under:
   echo.
-  echo     %ROOT%Server\
-  echo     %ROOT%..\Server\
+  echo     %ROOT%..\Server-%REV%\
+  echo     %ROOT%Server-%REV%\
   echo.
-  echo   Clone https://github.com/LostCityRS/Server to either of those and run
-  echo   its setup, or point at an existing copy:
+  echo   Fetch it:
+  echo.
+  echo     setup-server.cmd %REV%
+  echo.
+  echo   or point at an existing copy:
   echo.
   echo     set BWANA_SERVER=C:\path\to\Server
   echo.
@@ -195,7 +178,7 @@ rem   UseG1GC       incremental collector that works to a pause target
 rem   MaxGCPauseMillis  40ms, i.e. under two game ticks
 set "JVM=-Xms1536m -Xmx1536m -XX:+UseG1GC -XX:MaxGCPauseMillis=40"
 pushd "%CLIENT%"
-start "Bwana client" /MIN "%JDK8%\bin\java.exe" %JVM% -jar "%JAR%" %ARGS%
+start "Bwana client %REV%" /MIN "%JDK8%\bin\java.exe" %JVM% -jar "%JAR%" %CLIENTARGS%
 popd
 exit /b 0
 

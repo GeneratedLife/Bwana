@@ -35,73 +35,27 @@ set "ROOT=%~dp0"
 
 rem --- which revision ----------------------------------------------------------
 
-set "REV=%~1"
-if not defined REV set "REV=225"
-
-rem  Digits only: the revision names a git branch and a directory, and a typo that
-rem  reached the clone would fail with git's error rather than this one.
-echo %REV%| findstr /r "^[0-9][0-9]*$" >nul
+rem  The revision, its port offset and where its server lives all come from
+rem  revision.cmd, which the launchers read too. Keeping a second copy of the
+rem  offset here was the obvious thing and the wrong one: an offset that agrees
+rem  in the launcher but not in the .env fails as "the client cannot connect",
+rem  which names neither file.
+call "%ROOT%revision.cmd" %1
 if errorlevel 1 (
-  echo.
-  echo   "%REV%" is not a revision. Pass a number, or nothing for 225:
-  echo.
-  echo     setup-server.cmd 274
-  echo     setup-server.cmd 274 D:\lostcity\Server
-  echo.
   pause
   exit /b 1
 )
 
 rem --- where it goes -----------------------------------------------------------
 
-for %%I in ("%ROOT%..\Server-%REV%") do set "SERVER=%%~fI"
-
-rem  225 kept its old home if it is already there. Anything created before this
-rem  script took a revision lives at ..\Server, and moving it would break the
-rem  install and play.cmd's search in one go for no gain.
-if "%REV%"=="225" (
-  for %%I in ("%ROOT%..\Server") do set "LEGACY=%%~fI"
-  if exist "!LEGACY!\engine\.git" set "SERVER=!LEGACY!"
-)
-
+rem  revision.cmd only reports a server it can already see. This one creates it,
+rem  so it needs the intended path whether or not anything is there yet.
+if not defined SERVER for %%I in ("%ROOT%..\Server-%REV%") do set "SERVER=%%~fI"
 if defined BWANA_SERVER set "SERVER=%BWANA_SERVER%"
 if not "%~2"=="" set "SERVER=%~2"
 for %%I in ("%SERVER%") do set "SERVER=%%~fI"
 
-rem  The two places play.cmd looks, resolved so they can be compared against
-rem  wherever this ends up putting things.
-for %%I in ("%ROOT%..\Server") do set "BESIDE=%%~fI"
-for %%I in ("%ROOT%Server")    do set "INSIDE=%%~fI"
-
-rem --- ports -------------------------------------------------------------------
-
-rem  Ports have to agree with the client or it will never find the server. The
-rem  client is passed a node id and a port offset -- "10 2000 highmem members" --
-rem  and turns the offset into http 80+offset and game 43594+offset. The engine
-rem  defaults to 80 and 43594, so it needs telling.
-rem
-rem  One offset per revision, so two worlds can be up at once. A revision with no
-rem  offset here stops rather than borrowing another's and colliding: whoever adds
-rem  it must also point that revision's launcher at the same number.
 set "NODEID=10"
-set "OFFSET="
-if "%REV%"=="225" set "OFFSET=2000"
-if "%REV%"=="274" set "OFFSET=2010"
-
-if not defined OFFSET (
-  echo.
-  echo   No port offset is set for revision %REV%.
-  echo.
-  echo   Add one to setup-server.cmd beside the others, picking a number no
-  echo   other revision uses, and pass the same offset to that revision's
-  echo   client. Sharing an offset means two servers fighting for one port.
-  echo.
-  pause
-  exit /b 1
-)
-
-set /a WEBPORT=80+%OFFSET%
-set /a GAMEPORT=43594+%OFFSET%
 
 echo.
 echo   Revision    : %REV%
@@ -212,17 +166,24 @@ echo.
 echo   Done. The server is at:
 echo     %SERVER%
 echo.
+rem  Ask the launchers' own lookup whether it can see what was just built, rather
+rem  than restating where it searches and letting the two drift.
+set "MADE=%SERVER%"
+call "%ROOT%revision.cmd" %REV%
 set "FOUNDBYPLAY="
-if /i "%SERVER%"=="%BESIDE%" set "FOUNDBYPLAY=1"
-if /i "%SERVER%"=="%INSIDE%" set "FOUNDBYPLAY=1"
+if /i "%SERVER%"=="%MADE%" set "FOUNDBYPLAY=1"
+set "SERVER=%MADE%"
+
 if not defined FOUNDBYPLAY (
-  echo   That is not one of the two places play.cmd looks, so name it:
+  echo   play.cmd will not find it there, so name it:
   echo.
   echo     set BWANA_SERVER=%SERVER%
   echo.
 )
-echo   Then run play.cmd. First start takes about a minute while the world
-echo   loads; the client waits for it.
+echo   Then run:  play.cmd %REV%
+echo.
+echo   First start takes about a minute while the world loads; the client
+echo   waits for it.
 echo.
 pause
 exit /b 0

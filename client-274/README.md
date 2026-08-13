@@ -106,6 +106,19 @@ That clones `Engine-TS` and `Content` from their `274` branches into
 `<parent>/Server-274` and pins the engine to port offset 2010 — web 2090, game
 45604 — so it can run beside a 225 world without either fighting for a port.
 
-There is still no *launcher* for 274. `play.cmd` and `run-client.cmd` are wired to
-`client-225` and pass offset 2000; a 274 launcher has to pass 2010 to match what
-`setup-server.cmd` wrote into that server's `.env`.
+Then launch it the same way as 225, naming the revision:
+
+```
+play.cmd 274         server if needed, then the client
+run-client.cmd 274   client only, in the foreground
+```
+
+Both read `revision.cmd`, which is where the per-revision facts live — offset,
+ports, jar path, server location, and the client's argument line. That last one is
+not cosmetic: 274's `main` wants **five** arguments where 225 wants four, the fifth
+being `signlink.storeid`, which it clamps to 32-34. A client given the wrong count
+prints its usage line and exits, and in `play.cmd`'s minimised window that is
+indistinguishable from a crash.
+
+The toolkit still does not run: nothing calls `Bwana.start` here, so this launches
+a stock 274 client.

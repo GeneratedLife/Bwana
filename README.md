@@ -59,12 +59,19 @@ new script. Woodcutting is simply the first plan anyone wrote.
 Needs a JDK 8, and a Lost City server that `setup-server.cmd` will fetch for you.
 
 ```
-build.cmd            # gradle build, JDKs come from ~/.gradle/gradle.properties
-build-home.cmd       # gradle build, JDKs found on disk
-setup-server.cmd     # clones and prepares a server, once per revision
-setup-server.cmd 274 # ... for another revision, in its own folder and ports
-play.cmd             # starts the server if needed, then the client
-run-client.cmd       # client only, in the foreground, to read what it prints
+build.cmd          # gradle build, JDKs come from ~/.gradle/gradle.properties
+build-home.cmd     # gradle build, JDKs found on disk
+setup-server.cmd   # clones and prepares a server, once per revision
+play.cmd           # starts the server if needed, then the client
+run-client.cmd     # client only, in the foreground, to read what it prints
+```
+
+Each takes a revision, defaulting to 225:
+
+```
+setup-server.cmd 274
+play.cmd 274
+run-client.cmd 274
 ```
 
 The server is a separate project and is not vendored here. Engine and content are
@@ -80,11 +87,18 @@ Each revision gets its own folder and its own port offset, so two worlds can be 
 at once. 225 stays at `<parent>/Server` when an install is already there, since it
 predates the argument.
 
+Everything that differs between revisions lives in `revision.cmd`, which the three
+scripts above all read: the port offset, the jar path, where that revision's server
+is, and the client's argument line. Adding a revision is a line in each of its
+tables. They are deliberately separate copies of nothing — an offset that agrees in
+the launcher but not in the engine's `.env` presents as "the client cannot connect",
+which names neither file.
+
 It also writes an `.env` giving the engine the ports the client asks for. The
 client is passed a port offset — 2000 for 225, 2010 for 274 — and turns it into
 HTTP `80 + offset` and game `43594 + offset`, while the engine defaults to 80 and
-43594, so without that file the client never finds the server. Beyond Bun, the engine needs Java 17+ on `PATH`
-to pack content.
+43594, so without that file the client never finds the server. Beyond Bun, the
+engine needs Java 17+ on `PATH` to pack content.
 
 `build.cmd` relies on `~/.gradle/gradle.properties` pinning `org.gradle.java.home`
 and listing both JDKs for toolchain resolution. That file is outside the repo, so
@@ -103,9 +117,6 @@ set BWANA_JDK8=C:\path\to\jdk8       # the JDK 8, read by all three scripts
 set BWANA_JDK_DAEMON=C:\path\to\jdk  # what runs Gradle, build-home.cmd only
 set BWANA_SERVER=C:\path\to\Server   # the Lost City checkout, play.cmd only
 ```
-
-The client derives both ports from one offset: HTTP `80 + offset`, game
-`43594 + offset`.
 
 ## Documentation
 

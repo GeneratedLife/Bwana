@@ -17,28 +17,33 @@ rem
 rem  For a file to attach somewhere, redirect the whole script:
 rem
 rem    run-client.cmd > client.log 2>&1
+rem
+rem  Takes a revision, like the other scripts:
+rem
+rem    run-client.cmd 274
 rem ---------------------------------------------------------------------------
 
 set "ROOT=%~dp0"
 
-set "CLIENT=%ROOT%"
-if exist "%ROOT%Client-Java\build.gradle" set "CLIENT=%ROOT%Client-Java\"
+rem  Revision, jar and client arguments all come from revision.cmd. The arguments
+rem  matter more than they look: 225 takes four and 274 takes five, and a client
+rem  given the wrong count prints its usage line and exits, which in a minimised
+rem  window looks exactly like a crash.
+call "%ROOT%revision.cmd" %1
+if errorlevel 1 (
+  pause
+  exit /b 1
+)
 
-rem  The client-225 module builds the jar since the core/client split; the old
-rem  path is still accepted so a pre-split checkout still runs.
-set "JAR=%CLIENT%client-225\build\libs\rs2client.jar"
-if not exist "%JAR%" if exist "%CLIENT%build\libs\rs2client.jar" set "JAR=%CLIENT%build\libs\rs2client.jar"
+set "PROBE=%TEMP%\bwana-jdk-probe.txt"
 
-rem  Same arguments and JVM flags play.cmd uses, so this reproduces that launch
-rem  rather than a different one.
-set "ARGS=10 2000 highmem members"
+rem  Same JVM flags play.cmd uses, so this reproduces that launch rather than a
+rem  different one.
 set "JVM=-Xms1536m -Xmx1536m -XX:+UseG1GC -XX:MaxGCPauseMillis=40"
 
 rem  Same JDK 8 resolution order as play.cmd and build-home.cmd, falling back to
 rem  JAVA_HOME. The system JRE on PATH is deliberately not a candidate: it is
 rem  32-bit, and the client will not get a 1536m heap out of it.
-set "PROBE=%TEMP%\bwana-jdk-probe.txt"
-
 set "JDK8="
 if defined BWANA_JDK8 if exist "%BWANA_JDK8%\bin\java.exe" set "JDK8=%BWANA_JDK8%"
 if not defined JDK8 if exist "%LOCALAPPDATA%\jdks\jdk8u502-b07\bin\java.exe" set "JDK8=%LOCALAPPDATA%\jdks\jdk8u502-b07"
@@ -94,13 +99,14 @@ if not defined JDK8 (
 
 echo   java : %JDK8%\bin\java.exe
 echo   jar  : %JAR%
-echo   args : %ARGS%
+echo   rev  : %REV%
+echo   args : %CLIENTARGS%
 echo.
 echo   ---------------- client output below ----------------
 echo.
 
 pushd "%CLIENT%"
-"%JDK8%\bin\java.exe" %JVM% -jar "%JAR%" %ARGS%
+"%JDK8%\bin\java.exe" %JVM% -jar "%JAR%" %CLIENTARGS%
 set "RC=%ERRORLEVEL%"
 popd
 
