@@ -5,7 +5,17 @@ Java client (RuneScape rev 225).
 
 Bwana is a fork of `LostCityRS/Client-Java` branch `225`. The interesting property
 is how little of the client it touches: **one upstream file is modified, by seven
-lines**, and everything else lives under `src/main/java/bwana/`.
+lines**, and everything else lives in a module that cannot see the client at all.
+
+```
+core/          the toolkit. No dependencies, and no client on its classpath
+client-225/    the rev 225 client, implementing core's interfaces
+```
+
+`core` compiling without `deob` or `jagex2` available is not a convention — it is
+what the build does. Reaching for a client type from the toolkit fails with
+*package deob does not exist*. A second revision is a second `client-*` module
+beside this one, sharing `core` rather than copying it.
 
 ```
 GameState → World Model → Planner → Behavior → Navigation/Action → Verification

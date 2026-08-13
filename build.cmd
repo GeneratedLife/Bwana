@@ -21,7 +21,7 @@ if errorlevel 1 (
 )
 
 echo.
-echo   Built: %~dp0Client-Java\build\libs\rs2client.jar
+echo   Built: %~dp0Client-Java\client-225\build\libs\rs2client.jar
 echo.
 pause
 exit /b 0

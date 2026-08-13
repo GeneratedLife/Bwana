@@ -1,0 +1,16 @@
+// The toolkit. Deliberately has no dependencies at all.
+//
+// That empty dependency block is the point of this module rather than an
+// accident of it. Before the split, "no bwana file imports deob or jagex2" was
+// a convention checked by running ripgrep and remembering to care. Now the
+// client is not on this module's compile classpath, so the same rule is
+// enforced by javac: reach for a client type here and the build fails.
+//
+// Anything that genuinely needs the client belongs behind one of the interfaces
+// in this module -- GameState, WorldQuery, FrameSource, EntityInspector,
+// ActionExecutor, CollisionSource, WidgetSource -- which a client module
+// implements. Adding a dependency here to make something compile is the one
+// change that would quietly undo the arrangement.
+
+dependencies {
+}

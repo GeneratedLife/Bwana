@@ -28,7 +28,12 @@ rem gradle project, while the work PC keeps the client in a Client-Java folder
 rem with the scripts a level above it.
 set "CLIENT=%ROOT%"
 if exist "%ROOT%Client-Java\build.gradle" set "CLIENT=%ROOT%Client-Java\"
-set "JAR=%CLIENT%build\libs\rs2client.jar"
+
+rem  Since the core/client split the jar is built by the client-225 module and
+rem  lands under it. The old path is still checked so a checkout from before the
+rem  split, or a build/ left over from one, still launches.
+set "JAR=%CLIENT%client-225\build\libs\rs2client.jar"
+if not exist "%JAR%" if exist "%CLIENT%build\libs\rs2client.jar" set "JAR=%CLIENT%build\libs\rs2client.jar"
 
 rem --- where is the server ------------------------------------------------------
 

@@ -23,7 +23,11 @@ set "ROOT=%~dp0"
 
 set "CLIENT=%ROOT%"
 if exist "%ROOT%Client-Java\build.gradle" set "CLIENT=%ROOT%Client-Java\"
-set "JAR=%CLIENT%build\libs\rs2client.jar"
+
+rem  The client-225 module builds the jar since the core/client split; the old
+rem  path is still accepted so a pre-split checkout still runs.
+set "JAR=%CLIENT%client-225\build\libs\rs2client.jar"
+if not exist "%JAR%" if exist "%CLIENT%build\libs\rs2client.jar" set "JAR=%CLIENT%build\libs\rs2client.jar"
 
 rem  Same arguments and JVM flags play.cmd uses, so this reproduces that launch
 rem  rather than a different one.

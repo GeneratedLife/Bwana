@@ -1,0 +1,51 @@
+buildscript {
+    repositories {
+        mavenCentral()
+    }
+    dependencies {
+        classpath 'com.guardsquare:proguard-gradle:7.6.0'
+    }
+}
+
+apply plugin: 'application'
+
+dependencies {
+    // One-way, and only this way. core does not depend on this module and must
+    // not: client.java implements core's interfaces, so the arrow points from
+    // the revision-specific side to the revision-agnostic one.
+    implementation project(':core')
+}
+
+application {
+    mainClass = "deob.client"
+}
+
+jar {
+    // Keeps the artifact called rs2client.jar rather than client-225.jar, which
+    // is what play.cmd, run-client.cmd and the workflow all look for.
+    archiveBaseName = 'rs2client'
+
+    manifest {
+        attributes(
+            'Main-Class': 'deob.client'
+        )
+    }
+
+    // Fat jar: the client is launched with `java -jar` and no classpath, so
+    // core's classes have to be inside it. Before the split this collected an
+    // empty runtimeClasspath and was a no-op; now it is load-bearing, and the
+    // client will not start without it.
+    from {
+        configurations.runtimeClasspath.collect { it.isDirectory() ? it : zipTree(it) }
+    }
+
+    duplicatesStrategy = DuplicatesStrategy.EXCLUDE
+}
+
+tasks.register('proguard', proguard.gradle.ProGuardTask) {
+    configuration file('proguard.pro')
+
+    injars(tasks.named('jar', Jar).flatMap { it.archiveFile })
+
+    outjars(layout.buildDirectory.file("libs/rs2client.rel.jar"))
+}

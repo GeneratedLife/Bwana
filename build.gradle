@@ -1,52 +1,23 @@
-buildscript {
-    repositories {
-        mavenCentral()
-    }
-    dependencies {
-        classpath 'com.guardsquare:proguard-gradle:7.6.0'
-    }
-}
+// Root project: configuration only, no sources of its own.
+//
+// Everything both modules agree on lives here. The Java level is one of those
+// things: the client is rev 225 code and compiles as 1.6 source, and core is
+// held to the same level so a module cannot quietly start using a language
+// feature the client's compiler will reject.
 
-plugins {
-    id 'java'
-    id 'application'
-}
+subprojects {
+    apply plugin: 'java'
 
-java {
-    toolchain {
-        languageVersion.set(JavaLanguageVersion.of(8))
-    }
+    java {
+        toolchain {
+            languageVersion.set(JavaLanguageVersion.of(8))
+        }
 
-    sourceCompatibility = JavaVersion.VERSION_1_6
-    targetCompatibility = JavaVersion.VERSION_1_6
-}
-
-application {
-    mainClass = "deob.client"
-}
-
-jar {
-    manifest {
-        attributes(
-            'Main-Class': 'deob.client'
-        )
+        sourceCompatibility = JavaVersion.VERSION_1_6
+        targetCompatibility = JavaVersion.VERSION_1_6
     }
 
-    from {
-        configurations.runtimeClasspath.collect { it.isDirectory() ? it : zipTree(it) }
+    tasks.withType(JavaCompile) {
+        options.encoding = 'UTF-8'
     }
-
-    duplicatesStrategy = DuplicatesStrategy.EXCLUDE
-}
-
-tasks.withType(JavaCompile) {
-    options.encoding = 'UTF-8'
-}
-
-tasks.register('proguard', proguard.gradle.ProGuardTask) {
-    configuration file('proguard.pro')
-
-    injars(tasks.named('jar', Jar).flatMap { it.archiveFile })
-
-    outjars(layout.buildDirectory.file("libs/${project.name}.rel.jar"))
 }

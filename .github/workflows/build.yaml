@@ -16,18 +16,22 @@ jobs:
 
     - uses: gradle/actions/setup-gradle@v4
 
+    # Builds both modules. core is compiled without the client on its classpath,
+    # so a toolkit file reaching for a client type fails here rather than being
+    # caught by review.
     - name: Build
       run: gradle build
 
+    # Named explicitly: proguard is the client module's task, not the root's.
     - name: Obfuscate
-      run: gradle proguard
+      run: gradle :client-225:proguard
 
     - name: Upload
       uses: actions/upload-artifact@v4
       with:
         name: client
         path: |
-          build/libs/*
+          client-225/build/libs/*
 
   deob-map:
     runs-on: ubuntu-latest

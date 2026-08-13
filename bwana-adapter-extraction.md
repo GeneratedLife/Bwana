@@ -95,6 +95,11 @@ That is the entire permanent delta to a file this fork does not own.
 - **It does not check compilation.** No extraction was attempted. Java has ways to
   surprise you that a line count will not predict — static initialisation order and
   the `GameShell` callback timing being the obvious candidates.
+
+  The `core` / `client-225` module split that followed this audit *is* compiled, and
+  proves a narrower thing: the toolkit needs nothing from the client. It says
+  nothing about whether the 1,986 lines still inside `client.java` can move, because
+  those lines are on the client's side of the split and stayed there.
 - **It says nothing about other revisions.** 274 and 317 are different files. The
   all-public property is a property of *this* deobfuscation, and a 317 client from
   a different lineage may not share it. Re-run the `grep` above before assuming.
@@ -107,16 +112,16 @@ That is the entire permanent delta to a file this fork does not own.
 git clone --depth 1 -b 225 --single-branch \
   https://github.com/LostCityRS/Client-Java upstream
 
-# the delta
-diff upstream/src/main/java/deob/client.java src/main/java/deob/client.java \
+# the delta -- upstream keeps its sources at src/, this fork under client-225/
+diff upstream/src/main/java/deob/client.java client-225/src/main/java/deob/client.java \
   | grep -c '^>'                      # added
-diff upstream/src/main/java/deob/client.java src/main/java/deob/client.java \
+diff upstream/src/main/java/deob/client.java client-225/src/main/java/deob/client.java \
   | grep -c '^<'                      # changed or removed
 
 # the other three files
-cmp upstream/src/main/java/deob/class61.java       src/main/java/deob/class61.java
-cmp upstream/src/main/java/deob/ObfuscatedName.java src/main/java/deob/ObfuscatedName.java
-cmp upstream/src/main/java/sign/signlink.java      src/main/java/sign/signlink.java
+cmp upstream/src/main/java/deob/class61.java        client-225/src/main/java/deob/class61.java
+cmp upstream/src/main/java/deob/ObfuscatedName.java client-225/src/main/java/deob/ObfuscatedName.java
+cmp upstream/src/main/java/sign/signlink.java       client-225/src/main/java/sign/signlink.java
 
 # the access finding
 grep -rc '\bprivate\b' upstream/src/main/java --include=*.java

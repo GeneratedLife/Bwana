@@ -218,7 +218,9 @@ if not "%RC%"=="0" (
 )
 
 echo.
-echo   Built: %PROJECT%build\libs\rs2client.jar
+rem  The jar is the client-225 module's, so it lands under that module rather
+rem  than at the root of the build.
+echo   Built: %PROJECT%client-225\build\libs\rs2client.jar
 echo.
 pause
 exit /b 0
