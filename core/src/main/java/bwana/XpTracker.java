@@ -32,12 +32,12 @@ public final class XpTracker extends GameEventsAdapter {
 	 * <b>not</b> {@code oldXp == 0}, which is also true the first time you ever
 	 * train a skill and would silently swallow that first gain.
 	 */
-	private final boolean[] seen = new boolean[Skill.COUNT];
+	private final boolean[] seen = new boolean[Skill.CAPACITY];
 
-	private final int[] gained = new int[Skill.COUNT];
-	private final int[] currentXp = new int[Skill.COUNT];
+	private final int[] gained = new int[Skill.CAPACITY];
+	private final int[] currentXp = new int[Skill.CAPACITY];
 	/** When this skill first gained experience this session. */
-	private final long[] firstGainAt = new long[Skill.COUNT];
+	private final long[] firstGainAt = new long[Skill.CAPACITY];
 
 	private long sessionStart;
 	private int ticks;
@@ -60,7 +60,7 @@ public final class XpTracker extends GameEventsAdapter {
 		// If you would rather keep counting across a world hop, drop the persist
 		// call here and let only the reset button and shutdown hook close a session.
 		this.persist();
-		for (int var1 = 0; var1 < Skill.COUNT; var1++) {
+		for (int var1 = 0; var1 < Skill.CAPACITY; var1++) {
 			this.seen[var1] = false;
 		}
 	}
@@ -74,7 +74,7 @@ public final class XpTracker extends GameEventsAdapter {
 	}
 
 	public void onExperienceGained(int skill, int oldXp, int newXp) {
-		if (skill < 0 || skill >= Skill.COUNT) {
+		if (skill < 0 || skill >= Skill.CAPACITY) {
 			return;
 		}
 		this.currentXp[skill] = newXp;
@@ -125,7 +125,7 @@ public final class XpTracker extends GameEventsAdapter {
 			return;
 		}
 		SessionStore.append(this.sessionStart, System.currentTimeMillis(), this.gained);
-		for (int var1 = 0; var1 < Skill.COUNT; var1++) {
+		for (int var1 = 0; var1 < Skill.CAPACITY; var1++) {
 			this.gained[var1] = 0;
 			this.firstGainAt[var1] = 0L;
 		}
@@ -138,7 +138,7 @@ public final class XpTracker extends GameEventsAdapter {
 		List<XpSnapshot.Row> var3 = new ArrayList<XpSnapshot.Row>();
 		int var4 = 0;
 
-		for (int var5 = 0; var5 < Skill.COUNT; var5++) {
+		for (int var5 = 0; var5 < Skill.CAPACITY; var5++) {
 			if (this.gained[var5] <= 0) {
 				continue;
 			}

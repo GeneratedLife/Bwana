@@ -1,13 +1,24 @@
 package bwana;
 
 /**
- * Chat message types, as the rev-225 client uses them.
+ * What a chat message <i>is</i>, independent of how any client numbers it.
  * <p>
- * These are not documented anywhere; they were read off the client's own chat
- * renderer and the packet handlers that call {@code addMessage}. Each constant
- * notes where it comes from so the mapping can be re-checked against the source.
+ * <b>These are the toolkit's own kinds, not a client's ids.</b> A revision picks
+ * its own numbering for chat types, and nothing documents it — 225's were read off
+ * its chat renderer and its {@code addMessage} callers. So {@link Revision#chatKind}
+ * translates once, at the edge, in
+ * {@link GameEventBus#fireChatMessage(int, String, String)}; every message that
+ * reaches a listener already carries a kind from this class.
+ * <p>
+ * That the values below happen to equal 225's ids is <b>a coincidence, and is not
+ * relied upon</b>. It is recorded here because an unstated coincidence is the kind
+ * of thing that is silently wrong for one revision in five: 225's adapter maps
+ * these one-to-one, and another revision's will not.
  */
 public final class ChatType {
+
+	/** A type this revision's adapter did not recognise. */
+	public static final int UNKNOWN = -1;
 
 	/** Server or client message with no sender: "You get some logs." */
 	public static final int GAME = 0;
@@ -90,6 +101,9 @@ public final class ChatType {
 		}
 		if (type == GAME) {
 			return "game";
+		}
+		if (type == UNKNOWN) {
+			return "?";
 		}
 		return "type" + type;
 	}

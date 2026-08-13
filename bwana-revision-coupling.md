@@ -73,8 +73,12 @@ rather than interfaces.
   placeholders. **317 fills those with Slayer and Farming.** Concrete, guaranteed
   breakage: `Skill.name(18)` returns `"Stat18"` on a client where it is Slayer.
   Wants to be adapter-supplied.
+  *Resolved 2026-08-13: names and enabled-ness now come from `Revision`, supplied
+  by the adapter. The ids stay compile-time constants.*
 - **`bwana/ChatType.java:13-37`** — type ids read off 225's chat renderer. Not
   stable across revisions.
+  *Resolved 2026-08-13: the constants are now the toolkit's own kinds, and
+  `Revision.chatKind` translates the client's ids once, in `fireChatMessage`.*
 - **`bwana/Levels.java:18-25`** — the XP curve, deliberately duplicated to avoid
   importing the client. Identical in 317, so lowest risk in this group.
 - **`WorldQuery.getItemName(int)`** — the interface is fine; the ten-entry

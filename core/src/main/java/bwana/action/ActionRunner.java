@@ -408,8 +408,8 @@ public final class ActionRunner extends GameEventsAdapter {
 			if (var0 == null || !var0.isLoggedIn()) {
 				return null;
 			}
-			int[] var1 = new int[Skill.COUNT];
-			for (int var2 = 0; var2 < Skill.COUNT; var2++) {
+			int[] var1 = new int[Skill.CAPACITY];
+			for (int var2 = 0; var2 < Skill.CAPACITY; var2++) {
 				var1[var2] = var0.getSkillExperience(var2);
 			}
 			PlayerInfo var3 = var0.getPlayer();

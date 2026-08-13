@@ -41,11 +41,25 @@ public final class Bwana {
 	private Bwana() {
 	}
 
-	public static synchronized void start(GameState state, WorldQuery query) {
+	/**
+	 * Starts the toolkit against one client.
+	 * <p>
+	 * The revision comes first and is not optional, because the alternative was a
+	 * default: the toolkit used to assume 225's skill names and chat ids, and on
+	 * any other client that assumption produced confident wrong labels rather than
+	 * an error. An adapter that will not compile without naming its revision
+	 * cannot make that mistake.
+	 *
+	 * @param revision what the numbers this client sends actually mean
+	 */
+	public static synchronized void start(Revision revision, GameState state, WorldQuery query) {
 		if (started) {
 			return;
 		}
 		started = true;
+		// Before anything else: chat translation and skill names both read it, and
+		// a listener can fire as soon as the bus has one.
+		GameEventBus.setRevision(revision);
 		GameEventBus.setGameState(state);
 		GameEventBus.setWorldQuery(query);
 		if (state instanceof FrameSource) {
@@ -105,7 +119,7 @@ public final class Bwana {
 		 * arrives <i>before</i> onLogin fires (onLogin waits for the player's name,
 		 * which comes later, in the appearance block).
 		 */
-		private final boolean[] seen = new boolean[Skill.COUNT];
+		private final boolean[] seen = new boolean[Skill.CAPACITY];
 
 		/**
 		 * Ticks to wait after login before the sanity dump.

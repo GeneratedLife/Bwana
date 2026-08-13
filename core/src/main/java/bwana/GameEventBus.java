@@ -22,6 +22,12 @@ public final class GameEventBus {
 	private static boolean loggedIn = false;
 
 	/** Set once by the client at startup. */
+	/**
+	 * Set once at startup and read from the game thread on every chat message, so
+	 * it is not synchronised. Nothing reassigns it after {@link Bwana#start}.
+	 */
+	private static Revision REVISION;
+
 	private static GameState state;
 
 	/** Set once by the client at startup. */
@@ -44,6 +50,22 @@ public final class GameEventBus {
 
 	public static void removeListener(GameEvents listener) {
 		LISTENERS.remove(listener);
+	}
+
+	/**
+	 * Called by the adapter before anything else, since chat translation and every
+	 * skill name depend on it.
+	 */
+	public static void setRevision(Revision revision) {
+		REVISION = revision;
+	}
+
+	/**
+	 * Which revision is being talked to, or null if the toolkit was started
+	 * without one.
+	 */
+	public static Revision getRevision() {
+		return REVISION;
 	}
 
 	/** Called by the client once it has constructed itself. */
@@ -178,10 +200,20 @@ public final class GameEventBus {
 		}
 	}
 
+	/**
+	 * @param type the raw type this client emits, translated here and delivered
+	 *             to listeners as a {@link ChatType} kind
+	 */
 	public static void fireChatMessage(int type, String sender, String text) {
+		// Translate once, at the edge. Doing it here rather than in each listener
+		// is what lets ActionRunner compare against ChatType.GAME and be right on
+		// every revision: by the time a listener sees it, the number means the
+		// same thing everywhere.
+		Revision revision = REVISION;
+		int kind = revision == null ? type : revision.chatKind(type);
 		for (GameEvents listener : LISTENERS) {
 			try {
-				listener.onChatMessage(type, sender, text);
+				listener.onChatMessage(kind, sender, text);
 			} catch (Throwable var4) {
 				report(var4);
 			}

@@ -13136,7 +13136,7 @@ public class client extends GameShell implements GameState, WorldQuery, FrameSou
 				}
 				signlink.startpriv(InetAddress.getLocalHost());
 				client var1 = new client();
-				Bwana.start(var1, var1); // Bwana
+				Bwana.start(new bwana.adapter.rev225.Revision225(), var1, var1); // Bwana
 				var1.initApplication(532, 789, 0);
 			} else {
 				System.out.println("Usage: node-id, port-offset, [lowmem/highmem], [free/members]");

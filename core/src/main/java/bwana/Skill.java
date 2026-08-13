@@ -1,11 +1,18 @@
 package bwana;
 
 /**
- * Skill ids as the rev-225 server defines them.
+ * Skill ids, and the names to show for them.
  * <p>
- * Mirrors {@code PlayerStat} in Engine-TS. Indices 18 and 19 are placeholders the
- * server marks disabled — they exist so the numbering lines up with Runecraft at
- * 20, and no packet should ever arrive for them.
+ * The ids below are stable across this client family and are safe to compile
+ * against. The <i>names</i> are not: which slots are used, and what they are
+ * called, is a fact about the revision, so it comes from {@link Revision} rather
+ * than from a table here. 225 leaves 18 and 19 empty where 317 has Slayer and
+ * Farming.
+ * <p>
+ * Ids 0-17 and 20 have held their meaning everywhere this has been checked, which
+ * is why {@link #WOODCUTTING} is a constant a script can name. A revision that
+ * renumbered them would need more than a new table, and would be obvious rather
+ * than silent.
  */
 public final class Skill {
 
@@ -29,28 +36,47 @@ public final class Skill {
 	public static final int THIEVING = 17;
 	public static final int RUNECRAFT = 20;
 
-	/** Number of skill slots the protocol can address. */
-	public static final int COUNT = 21;
-
-	private static final String[] NAMES = new String[] {
-		"Attack", "Defence", "Strength", "Hitpoints", "Ranged", "Prayer", "Magic",
-		"Cooking", "Woodcutting", "Fletching", "Fishing", "Firemaking", "Crafting",
-		"Smithing", "Mining", "Herblore", "Agility", "Thieving", "Stat18", "Stat19",
-		"Runecraft"
-	};
+	/**
+	 * Slots to size an array for.
+	 * <p>
+	 * A ceiling, not a count — deliberately a compile-time constant so the xp
+	 * arrays can be fields rather than built after the adapter registers. Ask
+	 * {@link #count()} for how many this revision actually uses, and
+	 * {@link #isEnabled} before showing one.
+	 */
+	public static final int CAPACITY = 24;
 
 	private Skill() {
 	}
 
-	public static String name(int skill) {
-		if (skill < 0 || skill >= NAMES.length) {
-			return "Skill" + skill;
-		}
-		return NAMES[skill];
+	/** How many slots this revision uses. {@link #CAPACITY} if none is registered. */
+	public static int count() {
+		Revision var0 = GameEventBus.getRevision();
+		return var0 == null ? CAPACITY : Math.min(var0.skillCount(), CAPACITY);
 	}
 
-	/** False for the two placeholder slots the server never uses. */
+	/**
+	 * Display name for a skill id.
+	 * <p>
+	 * Falls back to {@code "Skill8"} rather than guessing when no revision is
+	 * registered. An unhelpful label is easier to notice than a plausible wrong
+	 * one, which is the failure this class was changed to prevent.
+	 */
+	public static String name(int skill) {
+		Revision var1 = GameEventBus.getRevision();
+		if (var1 == null || skill < 0 || skill >= var1.skillCount()) {
+			return "Skill" + skill;
+		}
+		String var2 = var1.skillName(skill);
+		return var2 == null ? "Skill" + skill : var2;
+	}
+
+	/** False for slots this revision does not use. True for all when none is registered. */
 	public static boolean isEnabled(int skill) {
-		return skill >= 0 && skill < COUNT && skill != 18 && skill != 19;
+		if (skill < 0 || skill >= CAPACITY) {
+			return false;
+		}
+		Revision var1 = GameEventBus.getRevision();
+		return var1 == null || (skill < var1.skillCount() && var1.isSkillEnabled(skill));
 	}
 }
