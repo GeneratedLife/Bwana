@@ -4,8 +4,8 @@ A tooling and automation layer built on the [Lost City](https://github.com/LostC
 Java client (RuneScape rev 225).
 
 Bwana is a fork of `LostCityRS/Client-Java` branch `225`. The interesting property
-is how little of the client it touches: **four upstream files are modified**, and
-everything else lives under `src/main/java/bwana/`.
+is how little of the client it touches: **one upstream file is modified, by seven
+lines**, and everything else lives under `src/main/java/bwana/`.
 
 ```
 GameState → World Model → Planner → Behavior → Navigation/Action → Verification
@@ -97,6 +97,8 @@ The client derives both ports from one offset: HTTP `80 + offset`, game
 - [`phase5-xp-packet-trace.md`](phase5-xp-packet-trace.md) — tracing the experience packet
 - [`bwana-revision-coupling.md`](bwana-revision-coupling.md) — what would have to change
   for a 317 adapter, and what would not
+- [`bwana-adapter-extraction.md`](bwana-adapter-extraction.md) — whether the toolkit can
+  leave `client.java`, and what moving it costs
 
 ## Licence
 
