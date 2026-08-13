@@ -43,8 +43,15 @@ public final class Skill {
 	 * arrays can be fields rather than built after the adapter registers. Ask
 	 * {@link #count()} for how many this revision actually uses, and
 	 * {@link #isEnabled} before showing one.
+	 * <p>
+	 * Headroom on purpose. This was 24 on nothing more than a guess, and the first
+	 * real second revision beat it immediately: 274's client declares
+	 * {@code Skill.count = 25}. {@link #count()} clamps to this value, so a ceiling
+	 * that is too low does not fail loudly — it quietly drops the top slots, which
+	 * is the failure mode this class exists to avoid. Sized well past anything in
+	 * view rather than exactly to it.
 	 */
-	public static final int CAPACITY = 24;
+	public static final int CAPACITY = 32;
 
 	private Skill() {
 	}
