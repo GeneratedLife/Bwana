@@ -10,6 +10,7 @@ lines**, and everything else lives in a module that cannot see the client at all
 ```
 core/          the toolkit. No dependencies, and no client on its classpath
 client-225/    the rev 225 client, implementing core's interfaces
+client-274/    the rev 274 client. Vendored and reading; not yet driving
 ```
 
 `core` compiling without `deob` or `jagex2` available is not a convention — it is
@@ -58,26 +59,31 @@ new script. Woodcutting is simply the first plan anyone wrote.
 Needs a JDK 8, and a Lost City server that `setup-server.cmd` will fetch for you.
 
 ```
-build.cmd         # gradle build, JDKs come from ~/.gradle/gradle.properties
-build-home.cmd    # gradle build, JDKs found on disk
-setup-server.cmd  # clones and prepares the server, once
-play.cmd          # starts the server if needed, then the client
-run-client.cmd    # client only, in the foreground, to read what it prints
+build.cmd            # gradle build, JDKs come from ~/.gradle/gradle.properties
+build-home.cmd       # gradle build, JDKs found on disk
+setup-server.cmd     # clones and prepares a server, once per revision
+setup-server.cmd 274 # ... for another revision, in its own folder and ports
+play.cmd             # starts the server if needed, then the client
+run-client.cmd       # client only, in the foreground, to read what it prints
 ```
 
 The server is a separate project and is not vendored here. Engine and content are
 versioned in branches that have to match the client, so `setup-server.cmd` takes
-both from their `225` branches and puts them where `play.cmd` looks:
+both from the branch you name and puts them where `play.cmd` looks:
 
 ```
-<parent>/Server/engine     Engine-TS, branch 225, runs on Bun
-<parent>/Server/content    Content,   branch 225
+<parent>/Server-<rev>/engine     Engine-TS, branch <rev>, runs on Bun
+<parent>/Server-<rev>/content    Content,   branch <rev>
 ```
+
+Each revision gets its own folder and its own port offset, so two worlds can be up
+at once. 225 stays at `<parent>/Server` when an install is already there, since it
+predates the argument.
 
 It also writes an `.env` giving the engine the ports the client asks for. The
-client is passed a port offset of 2000 and turns it into HTTP `80 + 2000` and game
-`43594 + 2000`, while the engine defaults to 80 and 43594 — so without that file
-the client never finds the server. Beyond Bun, the engine needs Java 17+ on `PATH`
+client is passed a port offset — 2000 for 225, 2010 for 274 — and turns it into
+HTTP `80 + offset` and game `43594 + offset`, while the engine defaults to 80 and
+43594, so without that file the client never finds the server. Beyond Bun, the engine needs Java 17+ on `PATH`
 to pack content.
 
 `build.cmd` relies on `~/.gradle/gradle.properties` pinning `org.gradle.java.home`

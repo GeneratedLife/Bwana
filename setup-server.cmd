@@ -3,49 +3,110 @@ setlocal enabledelayedexpansion
 title Bwana - server setup
 
 rem ---------------------------------------------------------------------------
-rem  Fetches and prepares the Lost City server that play.cmd starts. The server
-rem  is a separate project and is deliberately not vendored here; this only
-rem  clones it and wires it to the ports the client already asks for.
+rem  Fetches and prepares a Lost City server for one revision.
 rem
-rem  Engine and content are versioned in branches and have to match: the client
-rem  in this repo is rev 225, so both are cloned from their 225 branches. They
+rem    setup-server.cmd            225, beside this checkout
+rem    setup-server.cmd 274        274, beside this checkout
+rem    setup-server.cmd 274 D:\lc  274, at a path you name
+rem
+rem  The server is a separate project and is deliberately not vendored here; this
+rem  only clones it and wires it to the ports the matching client asks for.
+rem
+rem  Engine and content are versioned in branches and have to match each other and
+rem  the client, so both are cloned from the branch named by the revision. They
 rem  must sit beside each other, because the engine's neptune.toml reads its
 rem  scripts from ../content/scripts/.
 rem
-rem  Layout produced, which is where play.cmd looks:
+rem  Layout produced:
 rem
-rem    <parent>\Server\engine     Engine-TS,  branch 225
-rem    <parent>\Server\content    Content,    branch 225
+rem    <parent>\Server-<rev>\engine    Engine-TS, branch <rev>
+rem    <parent>\Server-<rev>\content   Content,   branch <rev>
 rem
-rem  By default <parent>\Server is a sibling of this checkout rather than inside
-rem  it, so a few hundred MB of server tree never shows up in git status. Pass a
-rem  path to put it elsewhere:
+rem  Beside this checkout rather than inside it, so a few hundred MB of server
+rem  tree never shows up in git status. Revisions get their own directory and
+rem  their own ports so two worlds can run at once.
 rem
-rem    setup-server.cmd D:\lostcity\Server
+rem  225 is the exception: it predates this argument and stays at <parent>\Server
+rem  when that already exists, so an install made before now keeps working and
+rem  play.cmd keeps finding it.
 rem ---------------------------------------------------------------------------
 
 set "ROOT=%~dp0"
 
-rem  The two places play.cmd looks, resolved to real paths so they can be compared
-rem  against wherever this ends up putting things.
+rem --- which revision ----------------------------------------------------------
+
+set "REV=%~1"
+if not defined REV set "REV=225"
+
+rem  Digits only: the revision names a git branch and a directory, and a typo that
+rem  reached the clone would fail with git's error rather than this one.
+echo %REV%| findstr /r "^[0-9][0-9]*$" >nul
+if errorlevel 1 (
+  echo.
+  echo   "%REV%" is not a revision. Pass a number, or nothing for 225:
+  echo.
+  echo     setup-server.cmd 274
+  echo     setup-server.cmd 274 D:\lostcity\Server
+  echo.
+  pause
+  exit /b 1
+)
+
+rem --- where it goes -----------------------------------------------------------
+
+for %%I in ("%ROOT%..\Server-%REV%") do set "SERVER=%%~fI"
+
+rem  225 kept its old home if it is already there. Anything created before this
+rem  script took a revision lives at ..\Server, and moving it would break the
+rem  install and play.cmd's search in one go for no gain.
+if "%REV%"=="225" (
+  for %%I in ("%ROOT%..\Server") do set "LEGACY=%%~fI"
+  if exist "!LEGACY!\engine\.git" set "SERVER=!LEGACY!"
+)
+
+if defined BWANA_SERVER set "SERVER=%BWANA_SERVER%"
+if not "%~2"=="" set "SERVER=%~2"
+for %%I in ("%SERVER%") do set "SERVER=%%~fI"
+
+rem  The two places play.cmd looks, resolved so they can be compared against
+rem  wherever this ends up putting things.
 for %%I in ("%ROOT%..\Server") do set "BESIDE=%%~fI"
 for %%I in ("%ROOT%Server")    do set "INSIDE=%%~fI"
 
-set "SERVER=%BESIDE%"
-if defined BWANA_SERVER set "SERVER=%BWANA_SERVER%"
-if not "%~1"=="" set "SERVER=%~1"
-for %%I in ("%SERVER%") do set "SERVER=%%~fI"
+rem --- ports -------------------------------------------------------------------
 
-rem  Ports have to agree with play.cmd or the client will never find the server.
-rem  play.cmd passes the client "10 2000 highmem members": node id 10 and a port
-rem  offset of 2000, and the client turns that offset into http 80+2000 and game
-rem  43594+2000. The engine defaults to 80 and 43594, so it needs telling.
+rem  Ports have to agree with the client or it will never find the server. The
+rem  client is passed a node id and a port offset -- "10 2000 highmem members" --
+rem  and turns the offset into http 80+offset and game 43594+offset. The engine
+rem  defaults to 80 and 43594, so it needs telling.
+rem
+rem  One offset per revision, so two worlds can be up at once. A revision with no
+rem  offset here stops rather than borrowing another's and colliding: whoever adds
+rem  it must also point that revision's launcher at the same number.
 set "NODEID=10"
-set "WEBPORT=2080"
-set "GAMEPORT=45594"
+set "OFFSET="
+if "%REV%"=="225" set "OFFSET=2000"
+if "%REV%"=="274" set "OFFSET=2010"
+
+if not defined OFFSET (
+  echo.
+  echo   No port offset is set for revision %REV%.
+  echo.
+  echo   Add one to setup-server.cmd beside the others, picking a number no
+  echo   other revision uses, and pass the same offset to that revision's
+  echo   client. Sharing an offset means two servers fighting for one port.
+  echo.
+  pause
+  exit /b 1
+)
+
+set /a WEBPORT=80+%OFFSET%
+set /a GAMEPORT=43594+%OFFSET%
 
 echo.
+echo   Revision    : %REV%
 echo   Server root : %SERVER%
+echo   Ports       : web %WEBPORT%, game %GAMEPORT%
 echo.
 
 rem --- prerequisites -----------------------------------------------------------
@@ -94,8 +155,8 @@ if exist "%SERVER%\engine\.git" (
   call :checkbranch "%SERVER%\engine" "engine " Engine-TS
   if errorlevel 1 exit /b 1
 ) else (
-  echo   engine  : cloning Engine-TS branch 225
-  "%GIT%" clone --depth 1 -b 225 --single-branch https://github.com/LostCityRS/Engine-TS "%SERVER%\engine"
+  echo   engine  : cloning Engine-TS branch %REV%
+  "%GIT%" clone --depth 1 -b %REV% --single-branch https://github.com/LostCityRS/Engine-TS "%SERVER%\engine"
   if errorlevel 1 goto clonefailed
 )
 
@@ -103,8 +164,8 @@ if exist "%SERVER%\content\.git" (
   call :checkbranch "%SERVER%\content" "content" Content
   if errorlevel 1 exit /b 1
 ) else (
-  echo   content : cloning Content branch 225
-  "%GIT%" clone --depth 1 -b 225 --single-branch https://github.com/LostCityRS/Content "%SERVER%\content"
+  echo   content : cloning Content branch %REV%
+  "%GIT%" clone --depth 1 -b %REV% --single-branch https://github.com/LostCityRS/Content "%SERVER%\content"
   if errorlevel 1 goto clonefailed
 )
 
@@ -118,9 +179,9 @@ if exist "%SERVER%\engine\.env" (
   echo             client cannot connect
 ) else (
   echo   .env    : writing, web %WEBPORT% / game %GAMEPORT%
-  >  "%SERVER%\engine\.env" echo # Written by setup-server.cmd to match play.cmd's client arguments.
-  >> "%SERVER%\engine\.env" echo # The client is told "%NODEID% 2000 highmem members" and turns that
-  >> "%SERVER%\engine\.env" echo # offset into http 80+2000 and game 43594+2000. Change both together.
+  >  "%SERVER%\engine\.env" echo # Written by setup-server.cmd for revision %REV%.
+  >> "%SERVER%\engine\.env" echo # The client is told "%NODEID% %OFFSET% highmem members" and turns that
+  >> "%SERVER%\engine\.env" echo # offset into http 80+%OFFSET% and game 43594+%OFFSET%. Change both together.
   >> "%SERVER%\engine\.env" echo NODE_ID=%NODEID%
   >> "%SERVER%\engine\.env" echo WEB_PORT=%WEBPORT%
   >> "%SERVER%\engine\.env" echo NODE_PORT=%GAMEPORT%
@@ -168,30 +229,31 @@ exit /b 0
 
 :checkbranch
 rem  %1 = repo dir, %2 = padded label for the report, %3 = repo name on GitHub.
-rem  Returns 1 if the checkout is not on 225.
+rem  Returns 1 if the checkout is not on the revision being set up.
 set "BR="
 rem  Plain `git`, not "%GIT%": a for /f command that opens with a quoted path
 rem  runs into cmd's own quote stripping. It was found on PATH above, so the
 rem  bare name resolves to the same executable.
 for /f "delims=" %%B in ('git -C "%~1" rev-parse --abbrev-ref HEAD 2^>nul') do set "BR=%%B"
-if /i "%BR%"=="225" (
-  echo   %~2 : on branch 225 already
+if /i "%BR%"=="%REV%" (
+  echo   %~2 : on branch %REV% already
   exit /b 0
 )
 echo.
 echo   %~3 at %~1
-echo   is on branch "%BR%", but this client is rev 225 and the engine, the
+echo   is on branch "%BR%", but this is a %REV% server, and the engine, the
 echo   content and the client all have to be the same revision.
 echo.
 echo   Branch 274 in particular runs on Node and imports node:sqlite, so under
-echo   Bun it dies with "No such built-in module: node:sqlite".
+echo   Bun it dies with "No such built-in module: node:sqlite" -- a message that
+echo   names neither the branch nor the revision.
 echo.
 echo   Switch it over:
 echo.
 echo     cd /d "%~1"
-echo     git remote set-branches --add origin 225
-echo     git fetch origin 225
-echo     git checkout 225
+echo     git remote set-branches --add origin %REV%
+echo     git fetch origin %REV%
+echo     git checkout %REV%
 echo.
 if /i "%~3"=="Engine-TS" (
   echo   Then clear out dependencies installed for the other branch, because
@@ -209,7 +271,7 @@ exit /b 1
 :clonefailed
 echo.
 echo   Clone FAILED - see above. If it is a network or proxy problem, retry;
-echo   if the branch is missing, check what 225 branches exist at
+echo   if the branch is missing, check what %REV% branches exist at
 echo   https://github.com/LostCityRS/Engine-TS/branches
 echo.
 pause

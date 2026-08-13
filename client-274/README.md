@@ -96,7 +96,16 @@ implementation.
 
 ## Running it
 
-There is no launcher for 274 yet. `play.cmd` and `run-client.cmd` are wired to
-`client-225`, and a 274 world needs `Engine-TS` and `Content` on their own `274`
-branches — `setup-server.cmd` hardcodes `225` and would need the revision as an
-argument.
+A 274 world is one command:
+
+```
+setup-server.cmd 274
+```
+
+That clones `Engine-TS` and `Content` from their `274` branches into
+`<parent>/Server-274` and pins the engine to port offset 2010 — web 2090, game
+45604 — so it can run beside a 225 world without either fighting for a port.
+
+There is still no *launcher* for 274. `play.cmd` and `run-client.cmd` are wired to
+`client-225` and pass offset 2000; a 274 launcher has to pass 2010 to match what
+`setup-server.cmd` wrote into that server's `.env`.
