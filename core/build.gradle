@@ -14,3 +14,10 @@
 
 dependencies {
 }
+
+java {
+    // The lowest source level of any client that consumes this, so core can never
+    // use a language feature one of them cannot compile against. 225 is the 1.6 one.
+    sourceCompatibility = JavaVersion.VERSION_1_6
+    targetCompatibility = JavaVersion.VERSION_1_6
+}

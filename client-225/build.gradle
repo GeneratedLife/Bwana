@@ -9,6 +9,12 @@ buildscript {
 
 apply plugin: 'application'
 
+java {
+    // 225 upstream compiles as 1.6.
+    sourceCompatibility = JavaVersion.VERSION_1_6
+    targetCompatibility = JavaVersion.VERSION_1_6
+}
+
 dependencies {
     // One-way, and only this way. core does not depend on this module and must
     // not: client.java implements core's interfaces, so the arrow points from

@@ -1,9 +1,10 @@
 // Root project: configuration only, no sources of its own.
 //
-// Everything both modules agree on lives here. The Java level is one of those
-// things: the client is rev 225 code and compiles as 1.6 source, and core is
-// held to the same level so a module cannot quietly start using a language
-// feature the client's compiler will reject.
+// Only what every module genuinely shares belongs here. The source level does
+// not: 225 upstream compiles as 1.6 and 274 upstream as 1.8, so each client sets
+// its own, and core holds itself to the lowest of them so every client can
+// consume it. Putting a single level here would have meant one module quietly
+// overriding the root, which reads as an accident rather than a decision.
 
 subprojects {
     apply plugin: 'java'
@@ -12,9 +13,6 @@ subprojects {
         toolchain {
             languageVersion.set(JavaLanguageVersion.of(8))
         }
-
-        sourceCompatibility = JavaVersion.VERSION_1_6
-        targetCompatibility = JavaVersion.VERSION_1_6
     }
 
     tasks.withType(JavaCompile) {

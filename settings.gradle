@@ -6,3 +6,4 @@ rootProject.name = 'bwana'
 // rather than copied, which is the whole point of the arrangement.
 include 'core'
 include 'client-225'
+include 'client-274'

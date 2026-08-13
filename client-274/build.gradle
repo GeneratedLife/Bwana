@@ -1,0 +1,38 @@
+apply plugin: 'application'
+
+dependencies {
+    implementation project(':core')
+}
+
+java {
+    // 274 upstream compiles as 1.8, where 225 is 1.6. The source level belongs to
+    // the vendored client rather than to the build, so it is set here and the root
+    // project does not impose one.
+    sourceCompatibility = JavaVersion.VERSION_1_8
+    targetCompatibility = JavaVersion.VERSION_1_8
+}
+
+application {
+    // Not deob.client: 274's deobfuscation names the entry point differently and
+    // puts it in a different package. That rename is the first sign that this is a
+    // port rather than a rebase -- see the note in the module's README.
+    mainClass = "jagex2.client.Client"
+}
+
+jar {
+    // Same artifact name as client-225's; the module directory is what tells them
+    // apart, so a launcher only has to know which revision it wants.
+    archiveBaseName = 'rs2client'
+
+    manifest {
+        attributes(
+            'Main-Class': 'jagex2.client.Client'
+        )
+    }
+
+    from {
+        configurations.runtimeClasspath.collect { it.isDirectory() ? it : zipTree(it) }
+    }
+
+    duplicatesStrategy = DuplicatesStrategy.EXCLUDE
+}
