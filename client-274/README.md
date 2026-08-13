@@ -2,9 +2,47 @@
 
 Lost City rev 274 client, from `LostCityRS/Client-Java` branch `274`.
 
-**Status: vendored and building. The toolkit is not wired in yet.** This module
-currently produces a stock 274 client. `Revision274` supplies the revision's tables
-to `core`, but nothing calls `Bwana.start`, so none of the toolkit runs here.
+**Status: vendored, building, and reading the client.** `Revision274` supplies the
+revision's tables and `State274` implements 12 of the 18 methods across `GameState`
+and `WorldQuery`. Nothing calls `Bwana.start` yet, so none of the toolkit *runs*
+here — but what it would read is in place and verified null-safe against a real
+`Client`.
+
+`State274` sits **outside** `Client.java`, unlike 225's adapter which is the client
+itself. Nothing forced 225's arrangement: the client carries no access control at
+all, so an adapter can read it from another package entirely. 274 is written the way
+[`../bwana-adapter-extraction.md`](../bwana-adapter-extraction.md) concluded 225
+should be.
+
+### What State274 answers
+
+| implemented | traced to |
+| --- | --- |
+| `isLoggedIn` | `ingame` |
+| `getSkillLevel` / `BaseLevel` / `Experience` | `statEffectiveLevel` / `statBaseLevel` / `statXP` |
+| `getWorldX` / `getWorldY` | `localPlayer.x/z >> 7` + `mapBuildBaseX/Z` |
+| `getPlane` | `minusedlevel` |
+| `getLocalPlayerName` | `localPlayer.name` |
+| `getCamera` | `camX/camY/camZ/camPitch/camYaw` |
+| `getPath` | `routeLength` / `routeX` / `routeZ` / `routeRun`, `minimapFlagX/Z` |
+| `getGroundItems` | `groundObj[plane][x][z]`, `ClientObj.id/count` |
+| `getItemName` | `ObjType.list(id).name` |
+
+The six that are not implemented throw rather than answer, because an empty array
+would be a plausible lie — "no npcs", "empty inventory" — and those are the failures
+this codebase keeps being rewritten to avoid:
+
+| refuses | needs |
+| --- | --- |
+| `getNpcs` | `ClientNpc` and `NpcType` field mapping |
+| `getPlayer` | `ClientPlayer` field mapping |
+| `getInventory` / `getEquipment` / `getInventoryIds` / `getInventoryCounts` | 274's `IfType` container mapping and its tab ids |
+
+Two mappings were checked rather than assumed, and both could have been silently
+wrong. `minusedlevel` reads like something other than the plane, but both clients
+fill it from a 2-bit field of the same packet. And `getPath` relies on `0` meaning
+"no destination" — 274 zeroes `minimapFlagX` on arrival at `Client.java:7576`,
+exactly as 225 zeroes `flagSceneTileX`.
 
 ## Why this is a port and not a rebase
 
@@ -42,9 +80,9 @@ this module exists, and the seven interfaces it needs — `GameState`, `WorldQue
 
 ## Remaining work
 
-1. Implement the seven interfaces against `Client`, which is where the 2,659 lines
-   go. `GameState` and `WorldQuery` first: they unblock the xp tracker, the chat
-   log and the inspector without needing anything else.
+1. Finish the six methods `State274` refuses, then implement the remaining five
+   interfaces against `Client` — `FrameSource`, `EntityInspector`,
+   `ActionExecutor`, `CollisionSource`, `WidgetSource`.
 2. Call `Bwana.start(new Revision274(), …)` from `Client.main`.
 3. Port the revision-specific bodies catalogued in
    [`../bwana-revision-coupling.md`](../bwana-revision-coupling.md) §2 — menu
