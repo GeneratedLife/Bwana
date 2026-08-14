@@ -115,6 +115,62 @@ picking with its bitset layout, and the menu opcode tables. They are catalogued 
 [`../bwana-revision-coupling.md`](../bwana-revision-coupling.md) §2 as the parts
 that are legitimately revision-specific rather than accidentally so.
 
+### Groundwork already verified for EntityInspector
+
+The archaeology is done, whatever order the code lands in. Every line below was
+read out of 274, not inferred from 225.
+
+| | 225 | 274 |
+| --- | --- | --- |
+| picked buffer | `Model.pickedBitsets` | `Model.pickedEntityTypecode` |
+| picked count | `Model.pickedCount` | same |
+| projection | `projectFromGround` | `getOverlayPos` |
+| projection output | `projectX` / `projectY` | same |
+| ground height | `getHeightmapY(level, x, 5, z)` | `getAvH(x, z, level)` |
+| trig tables | `Model.sin` / `Model.cos` | `Model.sinTable` / `Model.cosTable` |
+| camera | `cameraX/Y/Z/Pitch/Yaw` | `camX/Y/Z/Pitch/Yaw` |
+
+**The picking bit layout is identical**, confirmed from both sides rather than
+carried over — 274 unpacks it at `Client.java:3395` and 225 uses the same
+`>> 14 & 0x7FFF` for the id:
+
+```
+tileX  bits 0-6      tileZ  bits 7-13
+id     bits 14-28    kind   bits 29-30
+```
+
+**The projection argument order is swapped, and this is the trap.** 225 takes
+`(z, x, unused, heightOffset)`; 274 takes `(x, z, heightOffset)`. Both clients
+give it away themselves — 225 calls `projectFromGround(entity.z, entity.x, …)`
+and 274 calls `getOverlayPos(entity.x, entity.z, …)`. Reuse 225's order and every
+bounding box mirrors across the diagonal: drawn confidently, in the wrong place,
+with nothing reporting a fault. 225's third argument is unused in its body, which
+is why 274 takes three parameters where 225 takes four.
+
+The maths underneath is otherwise line-for-line the same, down to the `>= 50`
+near-plane test and `Pix3D.originX + (dx << 9) / depth`.
+
+### What EntityInspector will cost
+
+| method | 225 lines |
+| --- | --- |
+| `inspectAt` / `inspectAtCursor` | 67 / 66 |
+| `findCandidates` | 171 |
+| `debugNearest` | 107 |
+| `refreshDebugOverlay` | 73 |
+| `markerFor` | 34 |
+| `findObjects` / `findTargets` / `resolveTarget` | 8 / 17 / 3 |
+| private helpers (`pickTile`, `projectTileBox`, `addPickedLoc`, `addPathing`, `addGroundItemsAt`) | ~120 |
+
+Around 660 lines, and **not all of it belongs in an adapter**. `findTargets`,
+`resolveTarget` and `findObjects` touch no client type at all, and
+`rankByRelevance` needs only the camera, which `getCamera()` already exposes.
+That is revision-agnostic policy sitting in 225's client because that is where the
+interface happened to be implemented — every future revision would otherwise
+reimplement it. Lifting those into `core` before writing 274's copy is the cheaper
+order, and it is the same finding, at a smaller scale, that the coupling audit made
+about `EntityHandle`.
+
 Until then, targeting and anything that clicks are absent on 274. Reading and
 routing work; acting does not.
 
