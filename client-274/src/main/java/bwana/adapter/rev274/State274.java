@@ -4,6 +4,8 @@ import java.util.ArrayList;
 
 import bwana.GameState;
 import bwana.WorldQuery;
+import bwana.vision.Frame;
+import bwana.vision.FrameSource;
 import bwana.model.CameraInfo;
 import bwana.model.GroundItemInfo;
 import bwana.model.ItemInfo;
@@ -12,7 +14,12 @@ import bwana.model.PathInfo;
 import bwana.model.PlayerInfo;
 import jagex2.client.Client;
 import jagex2.config.ObjType;
+import jagex2.config.NpcType;
+import jagex2.config.IfType;
+import jagex2.dash3d.ClientNpc;
 import jagex2.dash3d.ClientObj;
+import jagex2.dash3d.ClientPlayer;
+import jagex2.graphics.PixMap;
 import jagex2.datastruct.LinkList;
 import jagex2.datastruct.Linkable;
 
@@ -34,11 +41,44 @@ import jagex2.datastruct.Linkable;
  * carried over from 225 on the assumption that a name meant the same thing — see
  * {@code ../README.md} for what is left and why those six need more than a rename.
  */
-public final class State274 implements GameState, WorldQuery {
+public final class State274 implements GameState, WorldQuery, FrameSource {
 
 	private static final int[] NO_SLOTS = new int[0];
 
 	private static final GroundItemInfo[] NO_GROUND_ITEMS = new GroundItemInfo[0];
+
+	private static final NpcInfo[] NO_NPCS = new NpcInfo[0];
+
+	private static final ItemInfo[] NO_ITEMS = new ItemInfo[0];
+
+	/**
+	 * Where the game view sits on the canvas. <b>Not 225's (8, 11)</b> — 274 draws
+	 * with {@code areaViewport.draw(4, graphics, 4)}, and {@code PixMap.draw} takes
+	 * x, graphics, y in that order, so it is (4, 4). The canvas differs too: 274
+	 * opens 765x503 where 225 opens 532x789.
+	 */
+	private static final int VIEWPORT_X = 4;
+
+	private static final int VIEWPORT_Y = 4;
+
+	/**
+	 * Sidebar tabs holding the inventory and the worn equipment.
+	 * <p>
+	 * <b>The one mapping here resting on correspondence rather than a statement in
+	 * the source.</b> 274 names the array sideOverlayId where 225 says
+	 * tabInterfaceId, and neither client labels a tab. What lines them up: both are
+	 * {@code int[15]} filled with -1, both are read at the same set of literal
+	 * indices, and both pair index i with {@code sideicons[i]} in the same redraw
+	 * and the same click test — only the pixel coordinates differ, which follows
+	 * from the different canvas. 225 and 274 are six months apart with no tab added
+	 * between them.
+	 * <p>
+	 * If an inventory read ever comes back as somebody else's tab, this is the first
+	 * thing to doubt.
+	 */
+	private static final int INVENTORY_TAB = 3;
+
+	private static final int EQUIPMENT_TAB = 4;
 
 	private final Client client;
 
@@ -179,35 +219,159 @@ public final class State274 implements GameState, WorldQuery {
 		return type == null ? null : type.name;
 	}
 
-	// --- not yet ----------------------------------------------------------------
+	// --- what is out there, continued -------------------------------------------
 
-	// These need more than a field rename, so they refuse rather than answer.
-	// Returning an empty array would be a plausible lie -- "no npcs here", "empty
-	// inventory" -- and a plausible lie is the failure this codebase keeps being
-	// rewritten to avoid. Nothing calls Bwana.start in this module yet, so nothing
-	// reaches them at runtime.
-
-	public int[] getInventoryIds() {
-		throw new UnsupportedOperationException("274: inventory needs the IfType container mapping");
-	}
-
-	public int[] getInventoryCounts() {
-		throw new UnsupportedOperationException("274: inventory needs the IfType container mapping");
-	}
-
-	public ItemInfo[] getInventory() {
-		throw new UnsupportedOperationException("274: inventory needs the IfType container mapping");
-	}
-
-	public ItemInfo[] getEquipment() {
-		throw new UnsupportedOperationException("274: equipment needs the IfType container mapping");
-	}
-
+	/**
+	 * npc[] is a sparse 16384 array and npcIds[] holds the live indices, exactly as
+	 * 225 keeps npcs[] and npcIds[]. NpcType.id is declared long in both; ids fit
+	 * an int comfortably.
+	 * <p>
+	 * 225's targetId is faceEntity here — same meaning, same -1 for "nobody", and
+	 * the animation it calls primarySeqId is primaryAnim.
+	 */
 	public NpcInfo[] getNpcs() {
-		throw new UnsupportedOperationException("274: npcs need the ClientNpc and NpcType field mapping");
+		if (!this.client.ingame) {
+			return NO_NPCS;
+		}
+		NpcInfo[] found = new NpcInfo[this.client.npcCount];
+		int kept = 0;
+		for (int i = 0; i < this.client.npcCount; i++) {
+			ClientNpc npc = this.client.npc[this.client.npcIds[i]];
+			if (npc == null) {
+				continue;
+			}
+			NpcType type = npc.type;
+			found[kept++] = new NpcInfo(type == null ? -1 : (int) type.id,
+				type == null ? null : type.name,
+				(npc.x >> 7) + this.client.mapBuildBaseX,
+				(npc.z >> 7) + this.client.mapBuildBaseZ,
+				npc.size, npc.yaw,
+				npc.health, npc.totalHealth,
+				npc.primaryAnim, npc.faceEntity);
+		}
+		if (kept == found.length) {
+			return found;
+		}
+		NpcInfo[] exact = new NpcInfo[kept];
+		System.arraycopy(found, 0, exact, 0, kept);
+		return exact;
 	}
 
 	public PlayerInfo getPlayer() {
-		throw new UnsupportedOperationException("274: player info needs the ClientPlayer field mapping");
+		ClientPlayer player = Client.localPlayer;
+		if (player == null) {
+			return null;
+		}
+		return new PlayerInfo(player.name,
+			(player.x >> 7) + this.client.mapBuildBaseX,
+			(player.z >> 7) + this.client.mapBuildBaseZ,
+			this.client.minusedlevel, player.yaw,
+			player.health, player.totalHealth,
+			player.primaryAnim, player.combatLevel);
+	}
+
+	// --- containers --------------------------------------------------------------
+
+	/**
+	 * The interface backing a sidebar tab, or null.
+	 * <p>
+	 * 274 calls 225's Component IfType and its instances list; the slot arrays are
+	 * linkObjType and linkObjNumber where 225 has invSlotObjId and invSlotObjCount,
+	 * and layer is layerId. The search is the same: the tab names an interface id,
+	 * and the container is whichever component sits on that layer and actually
+	 * carries slots.
+	 */
+	private IfType container(int tab) {
+		if (!this.client.ingame || IfType.list == null) {
+			return null;
+		}
+		int layer = this.client.sideOverlayId[tab];
+		if (layer == -1) {
+			return null;
+		}
+		for (int i = 0; i < IfType.list.length; i++) {
+			IfType candidate = IfType.list[i];
+			if (candidate != null && candidate.layerId == layer && candidate.linkObjType != null) {
+				return candidate;
+			}
+		}
+		return null;
+	}
+
+	/** Slot ids, one per slot, -1 for empty. */
+	public int[] getInventoryIds() {
+		IfType inventory = this.container(INVENTORY_TAB);
+		if (inventory == null) {
+			return NO_SLOTS;
+		}
+		int[] ids = new int[inventory.linkObjType.length];
+		for (int slot = 0; slot < ids.length; slot++) {
+			// Stored as id+1 so that 0 can mean empty -- the same encoding 225 uses,
+			// and confirmed here by the client's own ObjType.list(linkObjType - 1).
+			ids[slot] = inventory.linkObjType[slot] - 1;
+		}
+		return ids;
+	}
+
+	public int[] getInventoryCounts() {
+		IfType inventory = this.container(INVENTORY_TAB);
+		if (inventory == null || inventory.linkObjNumber == null) {
+			return NO_SLOTS;
+		}
+		int[] counts = new int[inventory.linkObjNumber.length];
+		System.arraycopy(inventory.linkObjNumber, 0, counts, 0, counts.length);
+		return counts;
+	}
+
+	public ItemInfo[] getInventory() {
+		return this.readContainer(INVENTORY_TAB);
+	}
+
+	public ItemInfo[] getEquipment() {
+		return this.readContainer(EQUIPMENT_TAB);
+	}
+
+	/** Occupied slots only, so an empty slot is absent rather than an id of -1. */
+	private ItemInfo[] readContainer(int tab) {
+		IfType from = this.container(tab);
+		if (from == null || from.linkObjNumber == null) {
+			return NO_ITEMS;
+		}
+		int occupied = 0;
+		for (int slot = 0; slot < from.linkObjType.length; slot++) {
+			if (from.linkObjType[slot] > 0) {
+				occupied++;
+			}
+		}
+		ItemInfo[] items = new ItemInfo[occupied];
+		int kept = 0;
+		for (int slot = 0; slot < from.linkObjType.length; slot++) {
+			if (from.linkObjType[slot] > 0) {
+				items[kept++] = new ItemInfo(slot, from.linkObjType[slot] - 1, from.linkObjNumber[slot]);
+			}
+		}
+		return items;
+	}
+
+	// --- what is on screen ---------------------------------------------------------
+
+	/**
+	 * A copy of the game view's pixels, taken on the game thread.
+	 * <p>
+	 * Copied rather than handed over: the client keeps drawing into that array, and
+	 * a vision pass reading it while the next frame lands would see half of each.
+	 * <p>
+	 * 274's PixMap calls the pixel array data where 225 calls it pixels, and makes
+	 * it final along with width and height.
+	 */
+	public Frame captureViewport() {
+		PixMap viewport = this.client.areaViewport;
+		if (viewport == null || viewport.data == null) {
+			return null;
+		}
+		int[] pixels = new int[viewport.data.length];
+		System.arraycopy(viewport.data, 0, pixels, 0, pixels.length);
+		return new Frame(pixels, viewport.width, viewport.height,
+			VIEWPORT_X, VIEWPORT_Y, System.currentTimeMillis());
 	}
 }

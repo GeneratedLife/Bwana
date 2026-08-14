@@ -2,11 +2,22 @@
 
 Lost City rev 274 client, from `LostCityRS/Client-Java` branch `274`.
 
-**Status: vendored, building, and reading the client.** `Revision274` supplies the
-revision's tables and `State274` implements 12 of the 18 methods across `GameState`
-and `WorldQuery`. Nothing calls `Bwana.start` yet, so none of the toolkit *runs*
-here — but what it would read is in place and verified null-safe against a real
-`Client`.
+**Status: vendored, building, and fully readable.** `Revision274` supplies the
+revision's tables and `State274` implements `GameState`, `WorldQuery` and
+`FrameSource` — all 18 methods plus `captureViewport`, verified null-safe against a
+real `Client`. Three of the seven interfaces done.
+
+**The toolkit still does not run here**, and the missing piece is not the
+`Bwana.start` call. 274's `Client` has *no* event hooks:
+
+```
+GameEventBus calls in 225's client.java : 3   (tick, fireExperienceGained, fireChatMessage)
+GameEventBus calls in 274's Client.java : 0
+```
+
+Starting the toolkit against a client that never fires a tick would register
+everything and then sit silent, which would look like progress and be none. The
+hooks come first.
 
 `State274` sits **outside** `Client.java`, unlike 225's adapter which is the client
 itself. Nothing forced 225's arrangement: the client carries no access control at
@@ -27,22 +38,33 @@ should be.
 | `getPath` | `routeLength` / `routeX` / `routeZ` / `routeRun`, `minimapFlagX/Z` |
 | `getGroundItems` | `groundObj[plane][x][z]`, `ClientObj.id/count` |
 | `getItemName` | `ObjType.list(id).name` |
+| `getNpcs` | `npc[]` / `npcIds[]`, `NpcType.id/name`, `faceEntity`, `primaryAnim` |
+| `getPlayer` | `ClientPlayer.name/combatLevel`, `health` / `totalHealth` |
+| `getInventory` / `getEquipment` / `getInventoryIds` / `getInventoryCounts` | `IfType.list`, `layerId`, `linkObjType` / `linkObjNumber` |
+| `captureViewport` | `areaViewport.data/width/height`, origin (4, 4) |
 
-The six that are not implemented throw rather than answer, because an empty array
-would be a plausible lie — "no npcs", "empty inventory" — and those are the failures
-this codebase keeps being rewritten to avoid:
+### Mappings that were checked rather than assumed
 
-| refuses | needs |
-| --- | --- |
-| `getNpcs` | `ClientNpc` and `NpcType` field mapping |
-| `getPlayer` | `ClientPlayer` field mapping |
-| `getInventory` / `getEquipment` / `getInventoryIds` / `getInventoryCounts` | 274's `IfType` container mapping and its tab ids |
+Four would have been silently wrong if 225's names had simply been reused.
 
-Two mappings were checked rather than assumed, and both could have been silently
-wrong. `minusedlevel` reads like something other than the plane, but both clients
-fill it from a 2-bit field of the same packet. And `getPath` relies on `0` meaning
-"no destination" — 274 zeroes `minimapFlagX` on arrival at `Client.java:7576`,
-exactly as 225 zeroes `flagSceneTileX`.
+- **`minusedlevel` is the plane.** The name suggests otherwise. Both clients fill it
+  from a 2-bit field of the same packet, and 274 indexes `collision[]` with it.
+- **`getPath`'s `0` means no destination.** 274 zeroes `minimapFlagX` on arrival at
+  `Client.java:7576`, exactly as 225 zeroes `flagSceneTileX`.
+- **The viewport origin is (4, 4), not 225's (8, 11).** `PixMap.draw` takes
+  `x, graphics, y`, and 274 calls `areaViewport.draw(4, graphics, 4)`. The canvas
+  differs too — 765x503 against 225's 532x789. `PixMap` also calls the pixel array
+  `data` rather than `pixels`.
+- **`linkObjType` carries `id + 1`,** so `0` can mean empty. Confirmed by the
+  client's own `ObjType.list(linkObjType[i] - 1)` at `Client.java:6017`.
+
+The one mapping resting on **correspondence rather than a statement in the source**
+is the sidebar tab index — 3 for inventory, 4 for equipment. 274 calls the array
+`sideOverlayId` where 225 says `tabInterfaceId`, and neither client labels a tab.
+Both are `int[15]` of `-1`, both are read at the same literal indices, and both pair
+index *i* with `sideicons[i]` in the same redraw and the same click test; only the
+pixel coordinates differ. If an inventory read ever returns another tab's contents,
+that constant is the first thing to doubt.
 
 ## Why this is a port and not a rebase
 
@@ -80,14 +102,16 @@ this module exists, and the seven interfaces it needs — `GameState`, `WorldQue
 
 ## Remaining work
 
-1. Finish the six methods `State274` refuses, then implement the remaining five
-   interfaces against `Client` — `FrameSource`, `EntityInspector`,
-   `ActionExecutor`, `CollisionSource`, `WidgetSource`.
-2. Call `Bwana.start(new Revision274(), …)` from `Client.main`.
-3. Port the revision-specific bodies catalogued in
-   [`../bwana-revision-coupling.md`](../bwana-revision-coupling.md) §2 — menu
-   opcodes, inventory and equipment component ids, model picking, scene bitsets,
-   loc anchoring.
+1. **Event hooks in `Client`** — `GameEventBus.tick`, `fireExperienceGained` and
+   `fireChatMessage`, the three calls 225 carries and 274 has none of. Without them
+   nothing downstream ever wakes up.
+2. **`Bwana.start(new Revision274(), state, state)`** in `Client.main`, after the
+   hooks. `start` takes only `GameState` and `WorldQuery` and finds the rest by
+   `instanceof`, so vision comes along free now that `FrameSource` is implemented.
+3. The remaining four interfaces — `EntityInspector`, `ActionExecutor`,
+   `CollisionSource`, `WidgetSource`. These are the expensive ones: model picking,
+   menu opcodes and collision, catalogued in
+   [`../bwana-revision-coupling.md`](../bwana-revision-coupling.md) §2.
 
 Item 3 is also the point of doing 274 at all. The coupling audit deferred four
 abstractions until a second adapter existed, on the grounds that designing against
@@ -120,5 +144,5 @@ being `signlink.storeid`, which it clamps to 32-34. A client given the wrong cou
 prints its usage line and exits, and in `play.cmd`'s minimised window that is
 indistinguishable from a crash.
 
-The toolkit still does not run: nothing calls `Bwana.start` here, so this launches
-a stock 274 client.
+This launches a stock 274 client — see the status note at the top for why the
+toolkit does not run yet.
