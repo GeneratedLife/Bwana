@@ -10,7 +10,7 @@ lines**, and everything else lives in a module that cannot see the client at all
 ```
 core/          the toolkit. No dependencies, and no client on its classpath
 client-225/    the rev 225 client, implementing core's interfaces
-client-274/    the rev 274 client. Vendored and reading; not yet driving
+client-274/    the rev 274 client. Reading and routing; not yet acting
 ```
 
 `core` compiling without `deob` or `jagex2` available is not a convention — it is
@@ -32,6 +32,7 @@ The client is reached only through interfaces, so no toolkit code imports
 | `bwana.GameState` / `WorldQuery` | What is true right now — skills, inventory, position |
 | `bwana.GameEvents` | What just happened — login, tick, experience, chat |
 | `bwana.inspect` | What is out there, and which of them is the same thing as before |
+| `bwana.inspect.Inspectors` | The parts of inspection that are the same on every revision |
 | `bwana.target` | Which one am I working on |
 | `bwana.action` | What can I do to it, and did it work |
 | `bwana.nav` | Where can I walk, and where are things |

@@ -162,14 +162,16 @@ near-plane test and `Pix3D.originX + (dx << 9) / depth`.
 | `findObjects` / `findTargets` / `resolveTarget` | 8 / 17 / 3 |
 | private helpers (`pickTile`, `projectTileBox`, `addPickedLoc`, `addPathing`, `addGroundItemsAt`) | ~120 |
 
-Around 660 lines, and **not all of it belongs in an adapter**. `findTargets`,
-`resolveTarget` and `findObjects` touch no client type at all, and
-`rankByRelevance` needs only the camera, which `getCamera()` already exposes.
-That is revision-agnostic policy sitting in 225's client because that is where the
-interface happened to be implemented — every future revision would otherwise
-reimplement it. Lifting those into `core` before writing 274's copy is the cheaper
-order, and it is the same finding, at a smaller scale, that the coupling audit made
-about `EntityHandle`.
+Around 660 lines — but **less than that now belongs in an adapter**.
+`findTargets`, `findObjects` and `rankByRelevance` have been lifted into
+`bwana.inspect.Inspectors` in `core`, so 274 will delegate rather than
+reimplement, and so will 317. 225 delegates to them today and shed 57 lines doing
+it.
+
+What is left for an adapter is what genuinely needs the client: `findCandidates`
+scans its entity arrays, `inspectAt` decodes its picked bitsets, `markerFor` and
+`debugNearest` project through its camera. `resolveTarget` stays too — its one
+line calls `resolveHandle`, which is a client lookup.
 
 Until then, targeting and anything that clicks are absent on 274. Reading and
 routing work; acting does not.

@@ -11628,30 +11628,11 @@ public class client extends GameShell implements GameState, WorldQuery, FrameSou
 	 * which falls out of the scene storing each level separately.
 	 */
 	public EntityInfo[] findObjects(String arg0, int arg1) {
-		TargetCriteria var3x = new TargetCriteria();
-		var3x.names = NameFilter.parse(arg0);
-		// the old behaviour: scenery and creatures, on screen or not
-		var3x.requireOnScreen = false;
-		var3x.maxDistance = PICK_RADIUS;
-		return this.findTargets(var3x, arg1);
+		return bwana.inspect.Inspectors.findObjects(this, arg0, arg1);
 	}
 
 	public EntityInfo[] findTargets(TargetCriteria arg0, int arg1) {
-		Candidate[] var3x = this.findCandidates(arg0, arg1 + 16);
-		int var4x = 0;
-		for (int var5x = 0; var5x < var3x.length && var4x < arg1; var5x++) {
-			if (var3x[var5x].isEligible()) {
-				var4x++;
-			}
-		}
-		EntityInfo[] var6x = new EntityInfo[var4x];
-		int var7x = 0;
-		for (int var8x = 0; var8x < var3x.length && var7x < var4x; var8x++) {
-			if (var3x[var8x].isEligible()) {
-				var6x[var7x++] = var3x[var8x].entity;
-			}
-		}
-		return var6x;
+		return bwana.inspect.Inspectors.findTargets(this, arg0, arg1);
 	}
 
 	public Candidate[] findCandidates(TargetCriteria arg0, int arg1) {
@@ -11671,8 +11652,8 @@ public class client extends GameShell implements GameState, WorldQuery, FrameSou
 		// 53x53 sweep for a 15-tile search: four times the tiles, and in a city that
 		// is thousands of config lookups several times a second on the game thread.
 		int var38 = arg0.maxDistance + 4;
-		if (var38 > PICK_RADIUS) {
-			var38 = PICK_RADIUS;
+		if (var38 > bwana.inspect.Inspectors.PICK_RADIUS) {
+			var38 = bwana.inspect.Inspectors.PICK_RADIUS;
 		} else if (var38 < 1) {
 			var38 = 1;
 		}
@@ -12661,7 +12642,6 @@ public class client extends GameShell implements GameState, WorldQuery, FrameSou
 	}
 
 	/** How far around the player to search for the tile under the cursor. */
-	private static final int PICK_RADIUS = 26;
 
 	/**
 	 * Order candidates so the first is the one you meant.
@@ -12673,47 +12653,10 @@ public class client extends GameShell implements GameState, WorldQuery, FrameSou
 	 * ties broken by distance from the camera, so the thing drawn in front wins.
 	 */
 	private void rankByRelevance(EntityInfo[] arg0) {
-		long[] var2 = new long[arg0.length];
-		for (int var3 = 0; var3 < arg0.length; var3++) {
-			EntityInfo var4 = arg0[var3];
-			int var5;
-			if (var4.kind == EntityInfo.KIND_NPC || var4.kind == EntityInfo.KIND_PLAYER) {
-				var5 = 0;
-			} else if (var4.kind == EntityInfo.KIND_GROUND_ITEM) {
-				var5 = 1;
-			} else if (var4.kind == EntityInfo.KIND_TILE) {
-				var5 = 4;
-			} else {
-				var5 = isNamed(var4.name) ? 2 : 3;
-			}
-			int var6 = var4.tileX * 128 + 64 - this.cameraX;
-			int var7 = var4.tileZ * 128 + 64 - this.cameraZ;
-			long var8 = (long) var6 * (long) var6 + (long) var7 * (long) var7;
-			if (var8 > 16777215L) {
-				var8 = 16777215L;
-			}
-			var2[var3] = (long) var5 * 16777216L + var8;
-		}
-		for (int var10 = 0; var10 < arg0.length; var10++) {
-			int var11 = var10;
-			for (int var12 = var10 + 1; var12 < arg0.length; var12++) {
-				if (var2[var12] < var2[var11]) {
-					var11 = var12;
-				}
-			}
-			long var13 = var2[var10];
-			var2[var10] = var2[var11];
-			var2[var11] = var13;
-			EntityInfo var15 = arg0[var10];
-			arg0[var10] = arg0[var11];
-			arg0[var11] = var15;
-		}
+		bwana.inspect.Inspectors.rankByRelevance(arg0, this.cameraX, this.cameraZ);
 	}
 
 	/** Scenery with no name is decoration the game gives you nothing to do with. */
-	private static boolean isNamed(String arg0) {
-		return arg0 != null && arg0.length() > 0 && arg0.charAt(0) != '(';
-	}
 
 	/**
 	 * Find the scene tile under a viewport point, or null.
@@ -12738,12 +12681,12 @@ public class client extends GameShell implements GameState, WorldQuery, FrameSou
 		long var7 = Long.MAX_VALUE;
 
 		int[] var9 = new int[8];
-		for (int var10 = -PICK_RADIUS; var10 <= PICK_RADIUS; var10++) {
+		for (int var10 = -bwana.inspect.Inspectors.PICK_RADIUS; var10 <= bwana.inspect.Inspectors.PICK_RADIUS; var10++) {
 			int var11 = var4 + var10;
 			if (var11 < 0 || var11 > 103) {
 				continue;
 			}
-			for (int var12 = -PICK_RADIUS; var12 <= PICK_RADIUS; var12++) {
+			for (int var12 = -bwana.inspect.Inspectors.PICK_RADIUS; var12 <= bwana.inspect.Inspectors.PICK_RADIUS; var12++) {
 				int var13 = var3 + var12;
 				if (var13 < 0 || var13 > 103) {
 					continue;
@@ -12925,12 +12868,12 @@ public class client extends GameShell implements GameState, WorldQuery, FrameSou
 
 		ArrayList var7 = new ArrayList();
 		int[] var8 = new int[8];
-		for (int var9 = -PICK_RADIUS; var9 <= PICK_RADIUS; var9++) {
+		for (int var9 = -bwana.inspect.Inspectors.PICK_RADIUS; var9 <= bwana.inspect.Inspectors.PICK_RADIUS; var9++) {
 			int var10 = var5 + var9;
 			if (var10 < 0 || var10 > 103) {
 				continue;
 			}
-			for (int var11 = -PICK_RADIUS; var11 <= PICK_RADIUS; var11++) {
+			for (int var11 = -bwana.inspect.Inspectors.PICK_RADIUS; var11 <= bwana.inspect.Inspectors.PICK_RADIUS; var11++) {
 				int var12 = var4 + var11;
 				if (var12 < 0 || var12 > 103) {
 					continue;
