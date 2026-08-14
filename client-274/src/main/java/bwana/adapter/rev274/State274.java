@@ -6,6 +6,7 @@ import bwana.GameState;
 import bwana.WorldQuery;
 import bwana.vision.Frame;
 import bwana.vision.FrameSource;
+import bwana.widget.WidgetSource;
 import bwana.model.CameraInfo;
 import bwana.model.GroundItemInfo;
 import bwana.model.ItemInfo;
@@ -41,7 +42,7 @@ import jagex2.datastruct.Linkable;
  * carried over from 225 on the assumption that a name meant the same thing — see
  * {@code ../README.md} for what is left and why those six need more than a rename.
  */
-public final class State274 implements GameState, WorldQuery, FrameSource {
+public final class State274 implements GameState, WorldQuery, FrameSource, WidgetSource {
 
 	private static final int[] NO_SLOTS = new int[0];
 
@@ -373,5 +374,111 @@ public final class State274 implements GameState, WorldQuery, FrameSource {
 		System.arraycopy(viewport.data, 0, pixels, 0, pixels.length);
 		return new Frame(pixels, viewport.width, viewport.height,
 			VIEWPORT_X, VIEWPORT_Y, System.currentTimeMillis());
+	}
+
+	// --- interfaces ----------------------------------------------------------------
+
+	/**
+	 * 225's viewportInterfaceId is mainModalId here. Same thing, and not guessed:
+	 * both clients assign it in the same breath as the report-abuse interface, from
+	 * the layer of whichever component carries clientCode 600.
+	 */
+	public int getViewportInterfaceId() {
+		return this.client.ingame && this.client.mainModalId > 0 ? this.client.mainModalId : NONE;
+	}
+
+	/** chatInterfaceId in 225. */
+	public int getChatInterfaceId() {
+		return this.client.ingame && this.client.chatComId > 0 ? this.client.chatComId : NONE;
+	}
+
+	public boolean isAnyInterfaceOpen() {
+		return this.getViewportInterfaceId() != NONE || this.getChatInterfaceId() != NONE;
+	}
+
+	/** IfType.list is 225's Component.instances, indexed by component id. */
+	private IfType componentAt(int componentId) {
+		if (componentId < 0 || IfType.list == null || componentId >= IfType.list.length) {
+			return null;
+		}
+		return IfType.list[componentId];
+	}
+
+	public int[] getContainerIds(int componentId) {
+		IfType component = this.componentAt(componentId);
+		if (component == null || component.linkObjType == null) {
+			return NO_SLOTS;
+		}
+		int[] ids = new int[component.linkObjType.length];
+		for (int slot = 0; slot < ids.length; slot++) {
+			// stored as id+1 so that 0 can mean empty
+			ids[slot] = component.linkObjType[slot] - 1;
+		}
+		return ids;
+	}
+
+	public int[] getContainerCounts(int componentId) {
+		IfType component = this.componentAt(componentId);
+		if (component == null || component.linkObjNumber == null) {
+			return NO_SLOTS;
+		}
+		int[] counts = new int[component.linkObjNumber.length];
+		System.arraycopy(component.linkObjNumber, 0, counts, 0, counts.length);
+		return counts;
+	}
+
+	public int[] getContainersUnder(int interfaceId) {
+		if (interfaceId < 0 || IfType.list == null) {
+			return NO_SLOTS;
+		}
+		ArrayList<Integer> found = new ArrayList<Integer>();
+		for (int i = 0; i < IfType.list.length; i++) {
+			IfType candidate = IfType.list[i];
+			if (candidate != null && candidate.layerId == interfaceId && candidate.linkObjType != null) {
+				found.add(Integer.valueOf(candidate.id));
+			}
+		}
+		return toIntArray(found);
+	}
+
+	/** 225 calls the item-option array iops; 274 has it in the singular. */
+	public int[] getContainersWithOption(String option) {
+		if (option == null || IfType.list == null) {
+			return NO_SLOTS;
+		}
+		String wanted = option.toLowerCase();
+		ArrayList<Integer> found = new ArrayList<Integer>();
+		for (int i = 0; i < IfType.list.length; i++) {
+			IfType candidate = IfType.list[i];
+			if (candidate == null || candidate.linkObjType == null || candidate.iop == null) {
+				continue;
+			}
+			for (int op = 0; op < candidate.iop.length; op++) {
+				if (candidate.iop[op] != null && candidate.iop[op].toLowerCase().indexOf(wanted) >= 0) {
+					found.add(Integer.valueOf(candidate.id));
+					break;
+				}
+			}
+		}
+		return toIntArray(found);
+	}
+
+	public String getWidgetText(int componentId) {
+		IfType component = this.componentAt(componentId);
+		return component == null ? null : component.text;
+	}
+
+	/** Absent counts as hidden: a component that is not there is not on screen. */
+	public boolean isWidgetHidden(int componentId) {
+		IfType component = this.componentAt(componentId);
+		return component == null || component.hide;
+	}
+
+	private static int[] toIntArray(ArrayList<Integer> from) {
+		int[] out = new int[from.size()];
+		for (int i = 0; i < out.length; i++) {
+			out[i] = from.get(i).intValue();
+		}
+		return out;
 	}
 }

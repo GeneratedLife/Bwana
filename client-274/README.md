@@ -3,10 +3,10 @@
 Lost City rev 274 client, from `LostCityRS/Client-Java` branch `274`.
 
 **Status: the toolkit runs here.** `Revision274` supplies the revision's tables,
-`State274` implements `GameState`, `WorldQuery` and `FrameSource` — all 18 methods
-plus `captureViewport` — and `Client` carries the three event hooks and the
-`Bwana.start` call. Three of the seven interfaces done; the XP tracker, chat log and
-vision have everything they need.
+`State274` implements `GameState`, `WorldQuery`, `FrameSource` and `WidgetSource`,
+and `Client` carries the three event hooks and the `Bwana.start` call. Four of the
+seven interfaces done; the XP tracker, chat log, vision and anything asking what is
+on screen have everything they need.
 
 What that cost inside the client is the point of the arrangement:
 
@@ -42,6 +42,8 @@ should be.
 | `getPlayer` | `ClientPlayer.name/combatLevel`, `health` / `totalHealth` |
 | `getInventory` / `getEquipment` / `getInventoryIds` / `getInventoryCounts` | `IfType.list`, `layerId`, `linkObjType` / `linkObjNumber` |
 | `captureViewport` | `areaViewport.data/width/height`, origin (4, 4) |
+| `getViewportInterfaceId` / `getChatInterfaceId` | `mainModalId` / `chatComId` |
+| `getContainersUnder` / `WithOption` / `getWidgetText` / `isWidgetHidden` | `IfType.list`, `layerId`, `iop`, `text`, `hide` |
 
 ### Mappings that were checked rather than assumed
 
@@ -102,18 +104,21 @@ this module exists, and the seven interfaces it needs — `GameState`, `WorldQue
 
 ## Remaining work
 
-The four interfaces `State274` does not implement — `EntityInspector`,
-`ActionExecutor`, `CollisionSource`, `WidgetSource`. `Bwana.start` finds them by
-`instanceof`, so adding each one lights up the next layer without touching the
-client again. These are the expensive ones: model picking, menu opcodes, collision
-and the widget tree, catalogued in
-[`../bwana-revision-coupling.md`](../bwana-revision-coupling.md) §2.
+Three interfaces left — `EntityInspector`, `ActionExecutor` and `CollisionSource`.
+`Bwana.start` finds each by `instanceof`, so they light up as they land without the
+client changing again; `WidgetSource` was picked up that way with no edit to
+`Client.java` at all.
 
-Until then the inspector, the action runner, navigation and the planner are absent
-on 274 — which is to say targeting and anything that clicks. Reading works; acting
-does not.
+These are the expensive ones, and the coupling audit already says why: model
+picking and its bitset layout, the menu opcode tables, and the collision map.
+They are catalogued in
+[`../bwana-revision-coupling.md`](../bwana-revision-coupling.md) §2 as the parts
+that are legitimately revision-specific rather than accidentally so.
 
-Item 3 is also the point of doing 274 at all. The coupling audit deferred four
+Until then, targeting and anything that clicks are absent on 274. Reading works;
+acting does not.
+
+Those three are also the point of doing 274 at all. The coupling audit deferred four
 abstractions until a second adapter existed, on the grounds that designing against
 one implementation just encodes that implementation. This module is that second
 implementation.
