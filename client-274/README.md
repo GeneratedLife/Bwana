@@ -3,10 +3,10 @@
 Lost City rev 274 client, from `LostCityRS/Client-Java` branch `274`.
 
 **Status: the toolkit runs here.** `Revision274` supplies the revision's tables,
-`State274` implements `GameState`, `WorldQuery`, `FrameSource` and `WidgetSource`,
-and `Client` carries the three event hooks and the `Bwana.start` call. Four of the
-seven interfaces done; the XP tracker, chat log, vision and anything asking what is
-on screen have everything they need.
+`State274` implements `GameState`, `WorldQuery`, `FrameSource`, `WidgetSource` and
+`CollisionSource`, and `Client` carries the three event hooks and the `Bwana.start`
+call. **Five of the seven interfaces done.** The XP tracker, chat log, vision, the
+interface reads and the navigation map all have what they need.
 
 What that cost inside the client is the point of the arrangement:
 
@@ -44,6 +44,7 @@ should be.
 | `captureViewport` | `areaViewport.data/width/height`, origin (4, 4) |
 | `getViewportInterfaceId` / `getChatInterfaceId` | `mainModalId` / `chatComId` |
 | `getContainersUnder` / `WithOption` / `getWidgetText` / `isWidgetHidden` | `IfType.list`, `layerId`, `iop`, `text`, `hide` |
+| `captureCollision` / `canEnter` | `collision[plane].flags`, masks `0x280120` / `0x280102` / `0x280108` / `0x280180` |
 
 ### Mappings that were checked rather than assumed
 
@@ -104,19 +105,23 @@ this module exists, and the seven interfaces it needs — `GameState`, `WorldQue
 
 ## Remaining work
 
-Three interfaces left — `EntityInspector`, `ActionExecutor` and `CollisionSource`.
+Two interfaces left — `EntityInspector` and `ActionExecutor`.
 `Bwana.start` finds each by `instanceof`, so they light up as they land without the
 client changing again; `WidgetSource` was picked up that way with no edit to
 `Client.java` at all.
 
-These are the expensive ones, and the coupling audit already says why: model
-picking and its bitset layout, the menu opcode tables, and the collision map.
-They are catalogued in
+These are the expensive pair, and the coupling audit already says why: model
+picking with its bitset layout, and the menu opcode tables. They are catalogued in
 [`../bwana-revision-coupling.md`](../bwana-revision-coupling.md) §2 as the parts
 that are legitimately revision-specific rather than accidentally so.
 
-Until then, targeting and anything that clicks are absent on 274. Reading works;
-acting does not.
+Until then, targeting and anything that clicks are absent on 274. Reading and
+routing work; acting does not.
+
+`ActionExecutor` is also where `EntityAction`'s `paramA` / `paramB` / `paramC` get
+tested. The coupling audit calls them raw 225 menu-ABI values living in a type
+documented as generic, and deferred redesigning them until a second adapter
+existed. It does now.
 
 Those three are also the point of doing 274 at all. The coupling audit deferred four
 abstractions until a second adapter existed, on the grounds that designing against

@@ -7,6 +7,8 @@ import bwana.WorldQuery;
 import bwana.vision.Frame;
 import bwana.vision.FrameSource;
 import bwana.widget.WidgetSource;
+import bwana.nav.CollisionSource;
+import bwana.nav.SceneCollision;
 import bwana.model.CameraInfo;
 import bwana.model.GroundItemInfo;
 import bwana.model.ItemInfo;
@@ -42,7 +44,7 @@ import jagex2.datastruct.Linkable;
  * carried over from 225 on the assumption that a name meant the same thing — see
  * {@code ../README.md} for what is left and why those six need more than a rename.
  */
-public final class State274 implements GameState, WorldQuery, FrameSource, WidgetSource {
+public final class State274 implements GameState, WorldQuery, FrameSource, WidgetSource, CollisionSource {
 
 	private static final int[] NO_SLOTS = new int[0];
 
@@ -480,5 +482,59 @@ public final class State274 implements GameState, WorldQuery, FrameSource, Widge
 			out[i] = from.get(i).intValue();
 		}
 		return out;
+	}
+
+	// --- where the player can walk ---------------------------------------------------
+
+	/**
+	 * The current plane's movement flags, copied out of the client's collision map.
+	 * <p>
+	 * 225 calls the array levelCollisionMap and 274 calls it collision; both are
+	 * {@code CollisionMap[4]} indexed by plane, and both store {@code flags[x][z]}.
+	 * {@link SceneCollision} wants {@code z * SIZE + x}, hence the transpose.
+	 * <p>
+	 * Copied rather than referenced, for the same reason the viewport is: the client
+	 * rewrites these as the scene rebuilds, and a pathfinder reading them mid-rebuild
+	 * would route through a wall that is about to exist.
+	 */
+	public SceneCollision captureCollision() {
+		int plane = this.client.minusedlevel;
+		if (!this.client.ingame || this.client.collision == null
+				|| plane < 0 || plane >= this.client.collision.length
+				|| this.client.collision[plane] == null) {
+			return null;
+		}
+		int[][] flags = this.client.collision[plane].flags;
+		if (flags == null || flags.length < SceneCollision.SIZE) {
+			return null;
+		}
+		int[] copy = new int[SceneCollision.SIZE * SceneCollision.SIZE];
+		for (int z = 0; z < SceneCollision.SIZE; z++) {
+			for (int x = 0; x < SceneCollision.SIZE; x++) {
+				copy[z * SceneCollision.SIZE + x] = flags[x][z];
+			}
+		}
+		return new SceneCollision(this.client.mapBuildBaseX, this.client.mapBuildBaseZ, plane, copy);
+	}
+
+	/**
+	 * Whether a tile carrying these flags can be entered from the given direction.
+	 * <p>
+	 * The masks are 274's own, and they happen to be identical to 225's -- 0x280120
+	 * north, 0x280102 south, 0x280108 west, 0x280180 east -- paired with the same
+	 * directions in both clients' CollisionMap. Checked rather than carried over,
+	 * because a wrong mask here does not fail: it silently routes through walls.
+	 */
+	public boolean canEnter(int flags, int direction) {
+		if (direction == 0) {
+			return (flags & 0x280120) == 0;
+		}
+		if (direction == 1) {
+			return (flags & 0x280180) == 0;
+		}
+		if (direction == 2) {
+			return (flags & 0x280102) == 0;
+		}
+		return (flags & 0x280108) == 0;
 	}
 }
