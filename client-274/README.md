@@ -2,22 +2,22 @@
 
 Lost City rev 274 client, from `LostCityRS/Client-Java` branch `274`.
 
-**Status: vendored, building, and fully readable.** `Revision274` supplies the
-revision's tables and `State274` implements `GameState`, `WorldQuery` and
-`FrameSource` — all 18 methods plus `captureViewport`, verified null-safe against a
-real `Client`. Three of the seven interfaces done.
+**Status: the toolkit runs here.** `Revision274` supplies the revision's tables,
+`State274` implements `GameState`, `WorldQuery` and `FrameSource` — all 18 methods
+plus `captureViewport` — and `Client` carries the three event hooks and the
+`Bwana.start` call. Three of the seven interfaces done; the XP tracker, chat log and
+vision have everything they need.
 
-**The toolkit still does not run here**, and the missing piece is not the
-`Bwana.start` call. 274's `Client` has *no* event hooks:
+What that cost inside the client is the point of the arrangement:
 
-```
-GameEventBus calls in 225's client.java : 3   (tick, fireExperienceGained, fireChatMessage)
-GameEventBus calls in 274's Client.java : 0
-```
+| | added to the client | changed |
+| --- | --- | --- |
+| 225 | 2,659 lines | 7 |
+| **274** | **12 lines** | **0** |
 
-Starting the toolkit against a client that never fires a tick would register
-everything and then sit silent, which would look like progress and be none. The
-hooks come first.
+Same integration, two orders of magnitude less of it in a file this fork does not
+own. The difference is entirely that 225's adapter *is* the client and 274's is a
+class beside it.
 
 `State274` sits **outside** `Client.java`, unlike 225's adapter which is the client
 itself. Nothing forced 225's arrangement: the client carries no access control at
@@ -102,16 +102,16 @@ this module exists, and the seven interfaces it needs — `GameState`, `WorldQue
 
 ## Remaining work
 
-1. **Event hooks in `Client`** — `GameEventBus.tick`, `fireExperienceGained` and
-   `fireChatMessage`, the three calls 225 carries and 274 has none of. Without them
-   nothing downstream ever wakes up.
-2. **`Bwana.start(new Revision274(), state, state)`** in `Client.main`, after the
-   hooks. `start` takes only `GameState` and `WorldQuery` and finds the rest by
-   `instanceof`, so vision comes along free now that `FrameSource` is implemented.
-3. The remaining four interfaces — `EntityInspector`, `ActionExecutor`,
-   `CollisionSource`, `WidgetSource`. These are the expensive ones: model picking,
-   menu opcodes and collision, catalogued in
-   [`../bwana-revision-coupling.md`](../bwana-revision-coupling.md) §2.
+The four interfaces `State274` does not implement — `EntityInspector`,
+`ActionExecutor`, `CollisionSource`, `WidgetSource`. `Bwana.start` finds them by
+`instanceof`, so adding each one lights up the next layer without touching the
+client again. These are the expensive ones: model picking, menu opcodes, collision
+and the widget tree, catalogued in
+[`../bwana-revision-coupling.md`](../bwana-revision-coupling.md) §2.
+
+Until then the inspector, the action runner, navigation and the planner are absent
+on 274 — which is to say targeting and anything that clicks. Reading works; acting
+does not.
 
 Item 3 is also the point of doing 274 at all. The coupling audit deferred four
 abstractions until a second adapter existed, on the grounds that designing against
@@ -144,5 +144,5 @@ being `signlink.storeid`, which it clamps to 32-34. A client given the wrong cou
 prints its usage line and exits, and in `play.cmd`'s minimised window that is
 indistinguishable from a crash.
 
-This launches a stock 274 client — see the status note at the top for why the
-toolkit does not run yet.
+The toolkit starts with the client. What is not there yet is anything that acts —
+see Remaining work.

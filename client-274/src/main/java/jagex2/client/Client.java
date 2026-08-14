@@ -1,5 +1,7 @@
 package jagex2.client;
 
+import bwana.Bwana;
+import bwana.GameEventBus;
 import deob.ObfuscatedName;
 import jagex2.config.*;
 import jagex2.dash3d.*;
@@ -1328,6 +1330,9 @@ public final class Client extends GameShell {
 				signlink.storeid = Integer.parseInt(arg0[4]);
 				signlink.startpriv(InetAddress.getLocalHost());
 				Client var1 = new Client();
+				// Bwana: before initApplication, so the bus is live for the first tick.
+				bwana.adapter.rev274.State274 var2 = new bwana.adapter.rev274.State274(var1); // Bwana
+				Bwana.start(new bwana.adapter.rev274.Revision274(), var2, var2); // Bwana
 				var1.initApplication(765, 503);
 			} else {
 				System.out.println("Usage: node-id, port-offset, [lowmem/highmem], [free/members], storeid");
@@ -1825,6 +1830,10 @@ public final class Client extends GameShell {
 			return;
 		}
 		loopCycle++;
+		// Bwana: one poll here covers every path that sets ingame.
+		// ingame flips true before localPlayer exists and before its name arrives
+		// in the appearance block, so gate on both or onLogin reports a null name.
+		GameEventBus.tick(ingame && localPlayer != null && localPlayer.name != null);
 		if (ingame) {
 			gameLoop();
 		} else {
@@ -3784,6 +3793,7 @@ public final class Client extends GameShell {
 
 	@ObfuscatedName("client.a(IILjava/lang/String;Ljava/lang/String;)V")
 	public void addChat(int arg1, String arg2, String arg3) {
+		GameEventBus.fireChatMessage(arg1, arg2, arg3); // Bwana
 		if (arg1 == 0 && tutComId != -1) {
 			tutComMessage = arg3;
 			super.mouseClickButton = 0;
@@ -8473,6 +8483,7 @@ public final class Client extends GameShell {
 					int var103 = in.g1();
 					int var104 = in.g4();
 					int var105 = in.g1();
+					int bwanaOldXp = statXP[var103]; // Bwana
 					statXP[var103] = var104;
 					statEffectiveLevel[var103] = var105;
 					statBaseLevel[var103] = 1;
@@ -8481,6 +8492,7 @@ public final class Client extends GameShell {
 							statBaseLevel[var103] = var106 + 2;
 						}
 					}
+					GameEventBus.fireExperienceGained(var103, bwanaOldXp, var104); // Bwana
 					ptype = -1;
 					return true;
 				}
